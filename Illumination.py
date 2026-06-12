@@ -56,7 +56,7 @@ class Ill():
         x = c_int()
         y = c_int()
         dll.Version(byref(x), byref(y))
-        print(f"[DLP INIT] Loaded dll version {x.value}.{y.value}")
+        print(f"[DLP INIT] Loaded Arins janky dll version {x.value}.{y.value}")
         self.DLP = DLP()
 
         print("[DLP INIT] Opened serial port to DLP with code ", end="")
