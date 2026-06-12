@@ -1,0 +1,10 @@
+.idea/
+*.dll
+*.exe
+.venv/
+info/
+__pycache__/
+averages/
+res/
+temp_img/
+*.lnk
