@@ -1,3 +1,5 @@
+# LL hardware bridge: python bindings for controlling the DLP
+# CURRENTLY UNUSED
 import ctypes
 from ctypes import *
 import time

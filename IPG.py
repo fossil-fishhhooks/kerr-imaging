@@ -1,3 +1,4 @@
+#IPG: python side of the raspi-based pattern generator
 import serial
 import serial.tools.list_ports
 import time

@@ -1,4 +1,8 @@
+# Illumination: higher-level coordination of all things DLP. uses IPG to control the DLP
+
 import ctypes
+
+
 from ctypes import *
 import time
 import IPG
