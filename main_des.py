@@ -6,7 +6,7 @@ import sys
 from PyQt5.QtWidgets import (
     QApplication, QLabel, QMainWindow, QToolBar, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit
 )
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import QTimer, Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap, QFont
 from PyQt5 import uic
 import IPG
@@ -79,6 +79,28 @@ framebuffer = np.zeros((2960, 5056), dtype=np.uint16)
 framebuffer = cam.grab()[0]
 
 
+class GrabWorker(QThread):
+    frame_ready = pyqtSignal(object)
+
+    def __init__(self, cam):
+        super().__init__()
+        self.cam = cam
+        self._running = True
+
+    def run(self):
+        while self._running:
+            try:
+                frames = self.cam.grab(nframes=1, frame_timeout=1.0)
+                if frames is not None and len(frames):
+                    frame = frames[0].copy()
+                    self.frame_ready.emit(frame)
+            except Exception:
+                pass
+
+    def stop(self):
+        self._running = False
+
+
 class FramebufferWindow(QMainWindow):
     def __init__(self, cam):
         super().__init__()
@@ -105,24 +127,20 @@ class FramebufferWindow(QMainWindow):
 
         self.logtext = ""  # Initialize logtext
 
-        # Self-arming single-shot timer (never blocks the UI)
-        self.timer = QTimer(self)
-        self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.update_frame)
-        self.timer.start(0)  # Kick off first frame immediately
-
         self.snapshot = np.zeros((2960, 5056), dtype=np.uint8)
         height, width = self.snapshot.shape
         q_image = QImage(self.snapshot, width, height, QImage.Format_Grayscale8)
         pixmap = QPixmap.fromImage(q_image).scaled(self.snap_label.width(), self.snap_label.height(), Qt.KeepAspectRatio)
         self.snap_label.setPixmap(pixmap)
 
-        cam.setup_acquisition(mode="sequence")
-        cam.start_acquisition()
-
         # Capture toggle
         self.capturing = True
         self.capture_button.clicked.connect(self.toggle_capture)
+
+        # Grab worker thread (uses snap mode = no circular buffer, no tearing)
+        self.grab_worker = GrabWorker(cam)
+        self.grab_worker.frame_ready.connect(self.on_frame_ready)
+        self.grab_worker.start()
 
         # IPG / light control setup
         self.ipg_port = None
@@ -189,30 +207,24 @@ class FramebufferWindow(QMainWindow):
 
     def toggle_capture(self):
         if self.capturing:
-            self.timer.stop()
-            try:
-                cam.stop_acquisition()
-            except Exception:
-                pass
+            self.grab_worker.stop()
+            self.grab_worker.wait(2000)
             self.capture_button.setText("Start Capture")
             self.capturing = False
             self.logtext += "\n[INFO] Capture stopped"
         else:
-            try:
-                cam.setup_acquisition(mode="sequence")
-                cam.start_acquisition()
-            except Exception as e:
-                self.logtext += f"\n[ERROR] Failed to start capture: {e}"
-                self.log.setText(self.logtext)
-                return
+            self.grab_worker = GrabWorker(self.cam)
+            self.grab_worker.frame_ready.connect(self.on_frame_ready)
+            self.grab_worker.start()
             self.capture_button.setText("Stop Capture")
             self.capturing = True
-            self.timer.start(0)
             self.logtext += "\n[INFO] Capture started"
         self.log.setText(self.logtext)
 
 
     def set_exposure(self):
+        self.grab_worker.stop()
+        self.grab_worker.wait(2000)
         try:
             val_ms = self.exposure_spin.value()
             cam.set_exposure(val_ms / 1000)
@@ -220,22 +232,27 @@ class FramebufferWindow(QMainWindow):
         except Exception as e:
             self.logtext += f"\n[ERROR] Set exposure failed: {e}"
         self.log.setText(self.logtext)
+        if self.capturing:
+            self.grab_worker = GrabWorker(self.cam)
+            self.grab_worker.frame_ready.connect(self.on_frame_ready)
+            self.grab_worker.start()
 
 
     def apply_roi(self):
+        self.grab_worker.stop()
+        self.grab_worker.wait(2000)
         try:
             x = self.roi_x_spin.value()
             y = self.roi_y_spin.value()
             w = self.roi_w_spin.value()
             h = self.roi_h_spin.value()
 
-            cam.stop_acquisition()
             cam.set_roi(x, x + w, y, y + h, 1, 1)
-            cam.setup_acquisition(mode="sequence")
-            cam.start_acquisition()
 
-            cam.wait_for_frame()
-            self.framebuffer = cam.read_oldest_image().copy()
+            frames = cam.grab(nframes=1, frame_timeout=10.0)
+            if frames is not None and len(frames):
+                self.framebuffer = frames[0].copy()
+                self.display_frame(self.framebuffer, self.live_label)
 
             self.current_roi_label.setText(
                 f"Current ROI: ({x}, {y}) → ({x+w}, {y+h})  [{w}×{h}]"
@@ -245,6 +262,10 @@ class FramebufferWindow(QMainWindow):
         except Exception as e:
             self.logtext += f"\n[ERROR] Apply ROI failed: {e}"
         self.log.setText(self.logtext)
+        if self.capturing:
+            self.grab_worker = GrabWorker(self.cam)
+            self.grab_worker.frame_ready.connect(self.on_frame_ready)
+            self.grab_worker.start()
 
 
     def update_fps(self):
@@ -331,24 +352,17 @@ class FramebufferWindow(QMainWindow):
         self.log.setText(self.logtext)
 
 
-    def update_frame(self):
-        try:
-            frame = cam.read_oldest_image()
-            if frame is not None:
-                self.framebuffer = frame.copy()
-                self.display_frame(self.framebuffer, self.live_label)
-                self.frame_count += 1
-                self.cam_status_widget.setText("Camera: Connected")
+    def on_frame_ready(self, frame):
+        if frame is not None:
+            self.framebuffer = frame
+            self.display_frame(self.framebuffer, self.live_label)
+            self.frame_count += 1
+            self.cam_status_widget.setText("Camera: Connected")
 
-                scrollbar = self.log.verticalScrollBar()
-                scrollbar.setValue(scrollbar.maximum())
-            else:
-                self.cam_status_widget.setText("Camera: Disconnected")
-        except Exception as e:
+            scrollbar = self.log.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
+        else:
             self.cam_status_widget.setText("Camera: Disconnected")
-
-        if self.capturing:
-            self.timer.start(0)
 
     def take_snapshot(self):
         try:
@@ -382,7 +396,6 @@ class FramebufferWindow(QMainWindow):
             self.log.setText(self.logtext)
 
     def display_frame(self, frame, label):
-        """Converts and displays a frame in a QLabel."""
         try:
             if frame is None:
                 return
@@ -395,7 +408,7 @@ class FramebufferWindow(QMainWindow):
             else:
                 display = (frame >> 8).astype(np.uint8)
             height, width = display.shape
-            q_image = QImage(display.data, width, height, QImage.Format_Grayscale8)
+            q_image = QImage(display.data, width, height, QImage.Format_Grayscale8).copy()
             pixmap = QPixmap.fromImage(q_image).scaled(label.width(), label.height(), Qt.KeepAspectRatio)
             label.setPixmap(pixmap)
         except Exception as e:
