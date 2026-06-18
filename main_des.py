@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 from PyQt5.QtWidgets import (
-    QApplication, QLabel, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit
+    QApplication, QLabel, QMainWindow, QToolBar, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit
 )
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap, QFont
@@ -131,23 +131,24 @@ class FramebufferWindow(QMainWindow):
         self.arc_set_button.clicked.connect(self.send_arc)
         self.ipg_sleep_button.clicked.connect(self.sleep_ipg)
 
-        # Statusbar
-        font = self.font()
-        font.setPointSize(9)
-        self.cam_status_widget = QLabel("Camera: Disconnected")
-        self.cam_status_widget.setFont(font)
-        self.fps_widget = QLabel("FPS: --")
-        self.fps_widget.setFont(font)
-        self.roi_widget = QLabel("Frame: --")
-        self.roi_widget.setFont(font)
-        self.ipg_status_widget = QLabel("IPG: Disconnected")
-        self.ipg_status_widget.setFont(font)
+        # Top toolbar (acts as status bar)
+        toolbar = QToolBar()
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
+        toolbar.setContextMenuPolicy(Qt.PreventContextMenu)
+        toolbar.setStyleSheet("QToolBar { border: none; spacing: 12px; }")
 
-        status = self.statusBar()
-        status.addPermanentWidget(self.cam_status_widget)
-        status.addPermanentWidget(self.fps_widget)
-        status.addPermanentWidget(self.roi_widget)
-        status.addPermanentWidget(self.ipg_status_widget)
+        self.cam_status_widget = QLabel("Camera: Disconnected")
+        self.fps_widget = QLabel("FPS: --")
+        self.roi_widget = QLabel("Frame: --")
+        self.ipg_status_widget = QLabel("IPG: Disconnected")
+
+        toolbar.addWidget(self.cam_status_widget)
+        toolbar.addWidget(self.fps_widget)
+        toolbar.addWidget(self.roi_widget)
+        toolbar.addSeparator()
+        toolbar.addWidget(self.ipg_status_widget)
+        self.addToolBar(toolbar)
 
         # FPS tracking
         self.frame_count = 0
@@ -262,7 +263,9 @@ class FramebufferWindow(QMainWindow):
             outradius = self.outradius_spin.value()
             startang = self.startang_spin.value()
             endang = self.endang_spin.value()
-            color = self.color_spin.value()
+
+            color_map = {"Red": 63488, "Green": 2016, "Blue": 31}
+            color = color_map[self.color_combo.currentText()]
 
             cmd = f'arc {inradius} {outradius} {startang} {endang} {color}\r'
             IPG.send_message(self.ipg_port, cmd)
