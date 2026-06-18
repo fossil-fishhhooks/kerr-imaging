@@ -181,8 +181,28 @@ int green = 0;
 int x=1;
 int origx,origy;
 bool y=false;
-origx = vinfo.xres_virtual/2;
-origy = vinfo.yres_virtual/2;
+
+
+    int offset_x = 0;
+    int offset_y = 0;
+
+    FILE* f = fopen("config.txt", "r");
+    if (f){
+
+       char key[64];
+       int val;
+   
+       while (fscanf(f, "%63s %d", key, &val) == 2) {
+           if (strcmp(key, "offset_x") == 0) offset_x = val;
+           if (strcmp(key, "offset_y") == 0) offset_y = val;
+       }
+   
+       fclose(f);
+    }
+
+   origx = vinfo.xres_virtual / 2 + offset_x;
+   origy = vinfo.yres_virtual / 2 + offset_y;
+   
     while (x==1) {
         char c;
         //serialFlush(serial);
