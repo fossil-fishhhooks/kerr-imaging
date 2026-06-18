@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QApplication, QLabel, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit
 )
 from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtGui import QImage, QPixmap, QFont
 from PyQt5 import uic
 import IPG
 import ctypes
@@ -131,6 +131,94 @@ class FramebufferWindow(QMainWindow):
         self.arc_set_button.clicked.connect(self.send_arc)
         self.ipg_sleep_button.clicked.connect(self.sleep_ipg)
 
+        # Statusbar
+        font = self.font()
+        font.setPointSize(9)
+        self.cam_status_widget = QLabel("Camera: Disconnected")
+        self.cam_status_widget.setFont(font)
+        self.fps_widget = QLabel("FPS: --")
+        self.fps_widget.setFont(font)
+        self.roi_widget = QLabel("Frame: --")
+        self.roi_widget.setFont(font)
+        self.ipg_status_widget = QLabel("IPG: Disconnected")
+        self.ipg_status_widget.setFont(font)
+
+        status = self.statusBar()
+        status.addPermanentWidget(self.cam_status_widget)
+        status.addPermanentWidget(self.fps_widget)
+        status.addPermanentWidget(self.roi_widget)
+        status.addPermanentWidget(self.ipg_status_widget)
+
+        # FPS tracking
+        self.frame_count = 0
+        self.fps_timer = QTimer(self)
+        self.fps_timer.timeout.connect(self.update_fps)
+        self.fps_timer.start(1000)
+
+        # Camera settings
+        try:
+            roi = cam.get_roi()
+            self.roi_x_spin.setValue(roi[0])
+            self.roi_y_spin.setValue(roi[2])
+            w = roi[1] - roi[0]
+            h = roi[3] - roi[2]
+            self.roi_w_spin.setValue(w)
+            self.roi_h_spin.setValue(h)
+            self.current_roi_label.setText(
+                f"Current ROI: ({roi[0]}, {roi[2]}) → ({roi[1]}, {roi[3]})  [{w}×{h}]"
+            )
+            self.roi_widget.setText(f"Frame: {w}×{h}")
+        except Exception as e:
+            self.logtext += f"\n[ERROR] Failed to read ROI: {e}"
+            self.log.setText(self.logtext)
+
+        try:
+            self.exposure_spin.setValue(cam.get_exposure() * 1000)
+        except Exception:
+            pass
+
+        self.exposure_spin.editingFinished.connect(self.set_exposure)
+        self.apply_roi_button.clicked.connect(self.apply_roi)
+
+
+    def set_exposure(self):
+        try:
+            val_ms = self.exposure_spin.value()
+            cam.set_exposure(val_ms / 1000)
+            self.logtext += f"\n[INFO] Exposure set to {val_ms} ms"
+        except Exception as e:
+            self.logtext += f"\n[ERROR] Set exposure failed: {e}"
+        self.log.setText(self.logtext)
+
+
+    def apply_roi(self):
+        try:
+            x = self.roi_x_spin.value()
+            y = self.roi_y_spin.value()
+            w = self.roi_w_spin.value()
+            h = self.roi_h_spin.value()
+
+            cam.stop_acquisition()
+            cam.set_roi(x, x + w, y, y + h, 1, 1)
+            cam.setup_acquisition(mode="sequence")
+            cam.start_acquisition()
+
+            self.current_roi_label.setText(
+                f"Current ROI: ({x}, {y}) → ({x+w}, {y+h})  [{w}×{h}]"
+            )
+            self.roi_widget.setText(f"Frame: {w}×{h}")
+            self.framebuffer = cam.grab()[0]
+            self.logtext += f"\n[INFO] ROI set to ({x},{y}) {w}×{h}"
+        except Exception as e:
+            self.logtext += f"\n[ERROR] Apply ROI failed: {e}"
+        self.log.setText(self.logtext)
+
+
+    def update_fps(self):
+        fps = self.frame_count
+        self.fps_widget.setText(f"FPS: {fps}")
+        self.frame_count = 0
+
 
     def connect_ipg(self):
         port = self.ipg_port_combo.currentText()
@@ -144,6 +232,7 @@ class FramebufferWindow(QMainWindow):
             self.ipg_status_label.setText(f"Connected: {port}")
             self.arc_set_button.setEnabled(True)
             self.ipg_sleep_button.setEnabled(True)
+            self.ipg_status_widget.setText("IPG: Connected, Active")
             self.logtext += "\n[IPG] Pattern generator running"
 
             if DLP_AVAILABLE:
@@ -161,6 +250,7 @@ class FramebufferWindow(QMainWindow):
         except Exception as e:
             self.logtext += f"\n[ERROR] IPG connect failed: {e}"
             self.ipg_status_label.setText("Connection failed")
+            self.ipg_status_widget.setText("IPG: Connection Failed")
         self.log.setText(self.logtext)
 
 
@@ -199,6 +289,7 @@ class FramebufferWindow(QMainWindow):
             self.ipg_status_label.setText("Disconnected")
             self.arc_set_button.setEnabled(False)
             self.ipg_sleep_button.setEnabled(False)
+            self.ipg_status_widget.setText("IPG: Connected, Sleep")
             self.logtext += "\n[IPG] System in sleep mode"
         except Exception as e:
             self.logtext += f"\n[ERROR] Sleep failed: {e}"
@@ -211,10 +302,14 @@ class FramebufferWindow(QMainWindow):
             cam.wait_for_frame()  # Wait for the next available frame, not necessary, but keep updating why not
             self.framebuffer = cam.read_oldest_image()  # Get the oldest image
             self.display_frame(self.framebuffer, self.live_label)
+            self.frame_count += 1
+
+            self.cam_status_widget.setText("Camera: Connected")
 
             scrollbar = self.log.verticalScrollBar()
             scrollbar.setValue(scrollbar.maximum())
         except Exception as e:
+            self.cam_status_widget.setText("Camera: Disconnected")
 
             self.logtext += "\n[ERROR] " + str(e)
             self.log.setText(self.logtext)

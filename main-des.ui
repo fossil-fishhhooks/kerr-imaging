@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>685</width>
+    <width>950</width>
     <height>1029</height>
    </rect>
   </property>
@@ -349,6 +349,200 @@
      </property>
      <property name="text">
       <string>Sleep IPG</string>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QGroupBox" name="cam_settings_group">
+    <property name="geometry">
+     <rect>
+      <x>680</x>
+      <y>450</y>
+      <width>256</width>
+      <height>260</height>
+     </rect>
+    </property>
+    <property name="title">
+     <string>Camera Settings</string>
+    </property>
+    <widget class="QLabel" name="exposure_label">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>25</y>
+       <width>110</width>
+       <height>20</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Exposure (ms):</string>
+     </property>
+    </widget>
+    <widget class="QDoubleSpinBox" name="exposure_spin">
+     <property name="geometry">
+      <rect>
+       <x>125</x>
+       <y>23</y>
+       <width>120</width>
+       <height>22</height>
+      </rect>
+     </property>
+     <property name="decimals">
+      <number>1</number>
+     </property>
+     <property name="minimum">
+      <double>0.1</double>
+     </property>
+     <property name="maximum">
+      <double>60000.0</double>
+     </property>
+     <property name="value">
+      <double>10.0</double>
+     </property>
+    </widget>
+    <widget class="QLabel" name="roi_header_label">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>65</y>
+       <width>236</width>
+       <height>20</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Region of Interest (ROI)</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="roi_x_label">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>95</y>
+       <width>30</width>
+       <height>20</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>X:</string>
+     </property>
+    </widget>
+    <widget class="QSpinBox" name="roi_x_spin">
+     <property name="geometry">
+      <rect>
+       <x>35</x>
+       <y>93</y>
+       <width>80</width>
+       <height>22</height>
+      </rect>
+     </property>
+     <property name="maximum">
+      <number>99999</number>
+     </property>
+    </widget>
+    <widget class="QLabel" name="roi_w_label">
+     <property name="geometry">
+      <rect>
+       <x>130</x>
+       <y>95</y>
+       <width>51</width>
+       <height>20</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Width:</string>
+     </property>
+    </widget>
+    <widget class="QSpinBox" name="roi_w_spin">
+     <property name="geometry">
+      <rect>
+       <x>175</x>
+       <y>93</y>
+       <width>70</width>
+       <height>22</height>
+      </rect>
+     </property>
+     <property name="maximum">
+      <number>99999</number>
+     </property>
+    </widget>
+    <widget class="QLabel" name="roi_y_label">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>125</y>
+       <width>30</width>
+       <height>20</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Y:</string>
+     </property>
+    </widget>
+    <widget class="QSpinBox" name="roi_y_spin">
+     <property name="geometry">
+      <rect>
+       <x>35</x>
+       <y>123</y>
+       <width>80</width>
+       <height>22</height>
+      </rect>
+     </property>
+     <property name="maximum">
+      <number>99999</number>
+     </property>
+    </widget>
+    <widget class="QLabel" name="roi_h_label">
+     <property name="geometry">
+      <rect>
+       <x>130</x>
+       <y>125</y>
+       <width>51</width>
+       <height>20</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Height:</string>
+     </property>
+    </widget>
+    <widget class="QSpinBox" name="roi_h_spin">
+     <property name="geometry">
+      <rect>
+       <x>175</x>
+       <y>123</y>
+       <width>70</width>
+       <height>22</height>
+      </rect>
+     </property>
+     <property name="maximum">
+      <number>99999</number>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="apply_roi_button">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>160</y>
+       <width>236</width>
+       <height>23</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Apply ROI (restarts acquisition)</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="current_roi_label">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>195</y>
+       <width>236</width>
+       <height>40</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Current ROI: --</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
      </property>
     </widget>
    </widget>

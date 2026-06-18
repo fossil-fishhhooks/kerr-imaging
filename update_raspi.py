@@ -63,11 +63,6 @@ def main():
         print(f"Error: {main_c_path} not found")
         sys.exit(1)
 
-    with open(main_c_path, 'rb') as f:
-        main_c_data = f.read()
-    encoded = base64.b64encode(main_c_data).decode('ascii')
-    print(f"Read {main_c_path} ({len(main_c_data)} bytes, {len(encoded)} base64)")
-
     ser = serial.Serial(port, baudrate=9600, timeout=1)
     time.sleep(1.5)
     ser.reset_output_buffer()
@@ -94,27 +89,34 @@ def main():
     if "SHELL_OK" not in output:
         print("WARNING: May not be at a shell prompt. Continuing anyway...")
 
+    def transfer_file(local_path, remote_path, label):
+        with open(local_path, 'rb') as f:
+            data = f.read()
+        encoded = base64.b64encode(data).decode('ascii')
+        print(f"Transferring {label} ({len(data)} bytes)...")
+
+        send(ser, "printf '' > /tmp/tf.b64\r", 0.2)
+        CHUNK = 120
+        chunks = [encoded[i:i+CHUNK] for i in range(0, len(encoded), CHUNK)]
+        total = len(chunks)
+        for i, chunk in enumerate(chunks):
+            send(ser, f'printf "%s" "{chunk}" >> /tmp/tf.b64\r', 0.02)
+            if (i + 1) % 30 == 0:
+                print(f"  {i+1}/{total} chunks")
+
+        send(ser, f'base64 -d /tmp/tf.b64 > {remote_path}\r', 0.3)
+        send(ser, "rm /tmp/tf.b64\r", 0.1)
+
     print("Ensuring target directory exists...")
     send(ser, "mkdir -p ~/programs/DLP/systems\r", 0.3)
 
-    print("Transferring main.c via base64...")
-    send(ser, "printf '' > /tmp/main.b64\r", 0.2)
+    transfer_file(main_c_path, "~/programs/DLP/systems/main.c", "main.c")
 
-    CHUNK = 120
-    chunks = [encoded[i:i+CHUNK] for i in range(0, len(encoded), CHUNK)]
-    total = len(chunks)
-    for i, chunk in enumerate(chunks):
-        send(ser, f'printf "%s" "{chunk}" >> /tmp/main.b64\r', 0.02)
-        if (i + 1) % 30 == 0:
-            print(f"  {i+1}/{total} chunks")
+    config_path = os.path.join(script_dir, 'raspi', 'config.txt')
+    if os.path.exists(config_path):
+        transfer_file(config_path, "~/programs/DLP/systems/config.txt", "config.txt")
 
-    print("  Verifying transfer...")
-    send(ser, "wc -c /tmp/main.b64\r", 0.5)
-    output = read_until(ser, timeout=1)
-    print(f"  Temp file: {output.strip()}")
-
-    print("Decoding and compiling...")
-    send(ser, "base64 -d /tmp/main.b64 > ~/programs/DLP/systems/main.c\r", 0.5)
+    print("Compiling...")
     send(ser, "cd ~/programs/DLP/systems && g++ -O3 main.c -o main.o -march=native -lm 2>&1\r", 0.5)
     time.sleep(8)
     send(ser, "echo BUILD_DONE\r", 0.5)
@@ -122,7 +124,6 @@ def main():
     output = read_until(ser, timeout=5)
     print(f"Build output:\n{output}")
 
-    send(ser, "rm /tmp/main.b64\r", 0.2)
     ser.close()
 
     if "BUILD_DONE" in output and "error" not in output.lower():
