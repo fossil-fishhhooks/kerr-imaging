@@ -10,6 +10,11 @@
 #include <string.h>
 #include <termios.h>
 
+static inline void draw_pixel(int pixel, int x, int y, unsigned char *fbptr,
+                               int bpp, int xoffset, int yoffset, int stride) {
+    *((unsigned int *)(fbptr + ((x + xoffset) + (y + yoffset) * stride) * (bpp / 8))) = pixel;
+}
+
 void drawRing(int r1, int r2, int q1, int q2, int x0, int y0, int color,
               int fbfd, unsigned char *fbptr, int bpp, int xoffset, int yoffset, int stride) {
     (void)fbfd; // unused
@@ -130,7 +135,7 @@ int main() {
                         "IPG help:\nStandard commands:\n"
                         ">arc [inner] [outer] [start] [end] [color]\n"
                         ">*IDN?\n>help\n"
-                        "++++++++++++++++++++++++++++++\n"
+                        "++++++++++++++++++++++++++++++\n";
                        
                     write(serial, help, strlen(help));
                     y = true;
