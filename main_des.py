@@ -382,19 +382,20 @@ class FramebufferWindow(QMainWindow):
     def display_frame(self, frame, label):
         """Converts and displays a frame in a QLabel."""
         try:
-            # Normalize the frame for display
-            normalized_frame = ((frame / frame.max()) * 255).astype(np.uint8)
+            if frame is None:
+                return
+            mx = frame.max()
+            if mx == 0:
+                normalized_frame = np.zeros(frame.shape, dtype=np.uint8)
+            else:
+                normalized_frame = ((frame / mx) * 255).astype(np.uint8)
             height, width = normalized_frame.shape
             q_image = QImage(normalized_frame.data, width, height, QImage.Format_Grayscale8)
             pixmap = QPixmap.fromImage(q_image).scaled(label.width(), label.height(), Qt.KeepAspectRatio)
             label.setPixmap(pixmap)
         except Exception as e:
-            if (type(e) != AttributeError):
-                self.logtext += "\n[ERROR] " + str(e)
-                self.log.setText(self.logtext)
-            else:
-                self.logtext += "\n[ERROR] " + " Dropped frame because frame object was not set properly [framebuffer = NULL]"
-                self.log.setText(self.logtext)
+            self.logtext += "\n[ERROR] display_frame: " + str(e)
+            self.log.setText(self.logtext)
 
 
 if __name__ == "__main__":
