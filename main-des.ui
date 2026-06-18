@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>950</width>
-    <height>1029</height>
+     <height>960</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -19,8 +19,8 @@
      <rect>
       <x>10</x>
       <y>10</y>
-      <width>661</width>
-      <height>431</height>
+       <width>661</width>
+       <height>370</height>
      </rect>
     </property>
     <layout class="QVBoxLayout" name="main_layout">
@@ -41,7 +41,7 @@
            <x>10</x>
            <y>30</y>
            <width>632</width>
-           <height>370</height>
+           <height>310</height>
           </rect>
          </property>
          <property name="cursor">
@@ -58,7 +58,7 @@
          <property name="geometry">
           <rect>
            <x>530</x>
-           <y>400</y>
+           <y>340</y>
            <width>91</width>
            <height>23</height>
           </rect>
@@ -75,7 +75,7 @@
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>450</y>
+      <y>390</y>
       <width>661</width>
       <height>261</height>
      </rect>
@@ -130,7 +130,7 @@
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>710</y>
+      <y>650</y>
       <width>661</width>
       <height>180</height>
      </rect>
@@ -378,7 +378,7 @@
     <property name="geometry">
      <rect>
       <x>680</x>
-      <y>450</y>
+      <y>390</y>
       <width>256</width>
       <height>260</height>
      </rect>
@@ -572,9 +572,9 @@
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>890</y>
+      <y>820</y>
       <width>661</width>
-      <height>130</height>
+      <height>100</height>
      </rect>
     </property>
     <property name="readOnly">

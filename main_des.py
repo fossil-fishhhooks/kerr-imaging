@@ -295,7 +295,7 @@ class FramebufferWindow(QMainWindow):
             startang = self.startang_spin.value()
             endang = self.endang_spin.value()
 
-            color_map = {"Red": 63488, "Green": 2016, "Blue": 31}
+            color_map = {"Red": 16711680, "Green": 65280, "Blue": 255}
             color = color_map[self.color_combo.currentText()]
 
             cmd = f'arc {inradius} {outradius} {startang} {endang} {color}\r'
