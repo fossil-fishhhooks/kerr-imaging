@@ -105,10 +105,11 @@ class FramebufferWindow(QMainWindow):
 
         self.logtext = ""  # Initialize logtext
 
-        # Timer for live update
+        # Self-arming single-shot timer (never blocks the UI)
         self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.update_frame)
-        self.timer.start(1000 // 50)  # 50 FPS MAXIMUM
+        self.timer.start(0)  # Kick off first frame immediately
 
         self.snapshot = np.zeros((2960, 5056), dtype=np.uint8)
         height, width = self.snapshot.shape
@@ -204,9 +205,9 @@ class FramebufferWindow(QMainWindow):
                 self.logtext += f"\n[ERROR] Failed to start capture: {e}"
                 self.log.setText(self.logtext)
                 return
-            self.timer.start(1000 // 50)
             self.capture_button.setText("Stop Capture")
             self.capturing = True
+            self.timer.start(0)
             self.logtext += "\n[INFO] Capture started"
         self.log.setText(self.logtext)
 
@@ -234,7 +235,7 @@ class FramebufferWindow(QMainWindow):
             cam.start_acquisition()
 
             cam.wait_for_frame()
-            self.framebuffer = cam.read_oldest_image()
+            self.framebuffer = cam.read_oldest_image().copy()
 
             self.current_roi_label.setText(
                 f"Current ROI: ({x}, {y}) → ({x+w}, {y+h})  [{w}×{h}]"
@@ -332,21 +333,22 @@ class FramebufferWindow(QMainWindow):
 
     def update_frame(self):
         try:
-            #print("Updating frame...")
-            cam.wait_for_frame()  # Wait for the next available frame, not necessary, but keep updating why not
-            self.framebuffer = cam.read_oldest_image()  # Get the oldest image
-            self.display_frame(self.framebuffer, self.live_label)
-            self.frame_count += 1
+            frame = cam.read_oldest_image()
+            if frame is not None:
+                self.framebuffer = frame.copy()
+                self.display_frame(self.framebuffer, self.live_label)
+                self.frame_count += 1
+                self.cam_status_widget.setText("Camera: Connected")
 
-            self.cam_status_widget.setText("Camera: Connected")
-
-            scrollbar = self.log.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
+                scrollbar = self.log.verticalScrollBar()
+                scrollbar.setValue(scrollbar.maximum())
+            else:
+                self.cam_status_widget.setText("Camera: Disconnected")
         except Exception as e:
             self.cam_status_widget.setText("Camera: Disconnected")
 
-            self.logtext += "\n[ERROR] " + str(e)
-            self.log.setText(self.logtext)
+        if self.capturing:
+            self.timer.start(0)
 
     def take_snapshot(self):
         try:
