@@ -119,6 +119,10 @@ class FramebufferWindow(QMainWindow):
         cam.setup_acquisition(mode="sequence")
         cam.start_acquisition()
 
+        # Capture toggle
+        self.capturing = True
+        self.capture_button.clicked.connect(self.toggle_capture)
+
         # IPG / light control setup
         self.ipg_port = None
         self.dlp_device = None
@@ -182,6 +186,31 @@ class FramebufferWindow(QMainWindow):
         self.apply_roi_button.clicked.connect(self.apply_roi)
 
 
+    def toggle_capture(self):
+        if self.capturing:
+            self.timer.stop()
+            try:
+                cam.stop_acquisition()
+            except Exception:
+                pass
+            self.capture_button.setText("Start Capture")
+            self.capturing = False
+            self.logtext += "\n[INFO] Capture stopped"
+        else:
+            try:
+                cam.setup_acquisition(mode="sequence")
+                cam.start_acquisition()
+            except Exception as e:
+                self.logtext += f"\n[ERROR] Failed to start capture: {e}"
+                self.log.setText(self.logtext)
+                return
+            self.timer.start(1000 // 50)
+            self.capture_button.setText("Stop Capture")
+            self.capturing = True
+            self.logtext += "\n[INFO] Capture started"
+        self.log.setText(self.logtext)
+
+
     def set_exposure(self):
         try:
             val_ms = self.exposure_spin.value()
@@ -204,11 +233,13 @@ class FramebufferWindow(QMainWindow):
             cam.setup_acquisition(mode="sequence")
             cam.start_acquisition()
 
+            cam.wait_for_frame()
+            self.framebuffer = cam.read_oldest_image()
+
             self.current_roi_label.setText(
                 f"Current ROI: ({x}, {y}) → ({x+w}, {y+h})  [{w}×{h}]"
             )
             self.roi_widget.setText(f"Frame: {w}×{h}")
-            self.framebuffer = cam.grab()[0]
             self.logtext += f"\n[INFO] ROI set to ({x},{y}) {w}×{h}"
         except Exception as e:
             self.logtext += f"\n[ERROR] Apply ROI failed: {e}"
