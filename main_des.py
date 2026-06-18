@@ -323,7 +323,7 @@ class FramebufferWindow(QMainWindow):
             self.ipg_status_label.setText("Disconnected")
             self.arc_set_button.setEnabled(False)
             self.ipg_sleep_button.setEnabled(False)
-            self.ipg_status_widget.setText("IPG: Connected, Sleep")
+            self.ipg_status_widget.setText("IPG: Connected, Sleep (reconnect to reactivate)")
             self.logtext += "\n[IPG] System in sleep mode"
         except Exception as e:
             self.logtext += f"\n[ERROR] Sleep failed: {e}"
@@ -384,13 +384,16 @@ class FramebufferWindow(QMainWindow):
         try:
             if frame is None:
                 return
-            mx = frame.max()
-            if mx == 0:
-                normalized_frame = np.zeros(frame.shape, dtype=np.uint8)
+            if self.normalize_check.isChecked():
+                mx = frame.max()
+                if mx == 0:
+                    display = np.zeros(frame.shape, dtype=np.uint8)
+                else:
+                    display = ((frame / mx) * 255).astype(np.uint8)
             else:
-                normalized_frame = ((frame / mx) * 255).astype(np.uint8)
-            height, width = normalized_frame.shape
-            q_image = QImage(normalized_frame.data, width, height, QImage.Format_Grayscale8)
+                display = (frame >> 8).astype(np.uint8)
+            height, width = display.shape
+            q_image = QImage(display.data, width, height, QImage.Format_Grayscale8)
             pixmap = QPixmap.fromImage(q_image).scaled(label.width(), label.height(), Qt.KeepAspectRatio)
             label.setPixmap(pixmap)
         except Exception as e:

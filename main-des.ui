@@ -566,16 +566,32 @@
      <property name="wordWrap">
       <bool>true</bool>
      </property>
-    </widget>
-   </widget>
-   <widget class="QTextEdit" name="log">
-    <property name="geometry">
-     <rect>
-      <x>10</x>
-      <y>820</y>
-      <width>661</width>
-      <height>100</height>
-     </rect>
+     </widget>
+     <widget class="QCheckBox" name="normalize_check">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>240</y>
+        <width>236</width>
+        <height>20</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Auto-normalize</string>
+      </property>
+      <property name="checked">
+       <bool>true</bool>
+      </property>
+      </widget>
+     </widget>
+    <widget class="QTextEdit" name="log">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>820</y>
+       <width>661</width>
+       <height>100</height>
+      </rect>
     </property>
     <property name="readOnly">
      <bool>true</bool>
