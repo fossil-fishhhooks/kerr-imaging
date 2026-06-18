@@ -31,8 +31,16 @@ def read_until(ser, timeout=3):
 
 
 def main():
-    if os.geteuid() != 0:
-        print("Error: admin/root privileges required for serial port access.")
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            if not ctypes.windll.shell32.IsUserAnAdmin():
+                print("Error: admin privileges required for serial port access. Run as Administrator.")
+                sys.exit(1)
+        except:
+            print("Warning: could not verify admin privileges on Windows. Proceeding anyway...")
+    elif os.geteuid() != 0:
+        print("Error: root privileges required for serial port access. Run with sudo.")
         sys.exit(1)
 
     ports = list_serial_ports()
