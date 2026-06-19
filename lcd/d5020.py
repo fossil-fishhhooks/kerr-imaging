@@ -10,8 +10,7 @@ class d5020():
 
 if __name__ == "__main__":
     print(core) # debugging
-    loaded_devices = mmc.get_loaded_devices()
-
-    # Print all device names to find your Meadowlark controller
-    for device in loaded_devices:
-        print(device)
+    strv = core.get_loaded_devices()
+    print(strv)
+    for i in range(strv.size()):
+        print(strv.get(i))
