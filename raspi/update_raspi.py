@@ -58,7 +58,7 @@ def main():
         port = ports[int(input("Select port number: "))]
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    main_c_path = os.path.join(script_dir, 'raspi', 'main.c')
+    main_c_path = os.path.join(script_dir, 'firmware', 'main.c')
     if not os.path.exists(main_c_path):
         print(f"Error: {main_c_path} not found")
         sys.exit(1)
@@ -112,7 +112,7 @@ def main():
 
     transfer_file(main_c_path, "~/programs/DLP/systems/main.c", "main.c")
 
-    config_path = os.path.join(script_dir, 'raspi', 'config.txt')
+    config_path = os.path.join(script_dir, 'firmware', 'config.txt')
     if os.path.exists(config_path):
         transfer_file(config_path, "~/programs/DLP/systems/config.txt", "config.txt")
 

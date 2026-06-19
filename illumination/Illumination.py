@@ -1,11 +1,12 @@
 # Illumination: higher-level coordination of all things DLP. uses IPG to control the DLP
 
+import os
 import ctypes
 
 
 from ctypes import *
 import time
-import IPG
+from illumination import IPG
 import subprocess
 import math
 
@@ -147,7 +148,7 @@ class Ill():
         self.__del__()
 
 
-x = Ill("dlp.acx")
+x = Ill(os.path.join(os.path.dirname(__file__), "dlp.acx"))
 # Arc settings
 IN_RADIUS = 350
 OUT_RADIUS = 400

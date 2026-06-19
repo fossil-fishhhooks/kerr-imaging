@@ -9,7 +9,8 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap, QFont
 from PyQt5 import uic
-import IPG
+from illumination import IPG
+import os
 import ctypes
 
 # Optional DLP DLL (Windows only, graceful fallback on Linux)
@@ -289,7 +290,7 @@ class FramebufferWindow(QMainWindow):
             if DLP_AVAILABLE:
                 self.dlp_device = DLPDevice()
                 ret = dlp_dll.OpenWithAutoconnect(
-                    ctypes.byref(self.dlp_device), ctypes.c_char_p(b"dlp.acx")
+                    ctypes.byref(self.dlp_device), ctypes.c_char_p(os.path.join(os.path.dirname(__file__), "illumination", "dlp.acx").encode())
                 )
                 self.logtext += f"\n[DLP] Open with code {ret}"
                 dlp_dll.WriteOperateMode(self.dlp_device, ctypes.c_uint8(0x00))
