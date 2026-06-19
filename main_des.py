@@ -54,14 +54,24 @@ def setup():
         exit(9)
     cam.open()
     print('Connected \nSetting up...')
-    #cam.set_roi(0,18,0,18,1,1)
+
+    # Set 2x2 hardware binning to reduce frame size 4x (faster DMA copy, less tearing risk)
+    try:
+        w, h = cam.get_detector_size()
+        cam.set_roi(0, w, 0, h, hbin=2, vbin=2)
+        print(f'Hardware binning set to 2x2')
+    except Exception as e:
+        print(f'Could not set 2x2 binning: {e}')
+
+    # Disable rolling shutter if camera supports global shutter output mode
+    try:
+        cam.set_trigger_mode(mode="timed", out_mode="global_shutter")
+        print("Global shutter mode set")
+    except Exception:
+        print("Global shutter not available, using default shutter mode")
+
     print(f'Camera frame size: {cam.get_roi()[1]}x{cam.get_roi()[3]}')
     print(f'Camera frame timings: {cam.get_frame_timings()}')
-    # Set exposure time (in milliseconds)
-    #cam.set_exposure(10E-3)  # set 10ms exposure
-
-    #cam.start_acquisition(mode='snap', nframes=1)
-
 
     return cam
 
@@ -75,7 +85,10 @@ def close(camera):
 NoI = 50
 
 cam = setup()
-framebuffer = np.zeros((2960, 5056), dtype=np.uint16)
+roi = cam.get_roi()
+frame_w = (roi[1] - roi[0]) // roi[4]
+frame_h = (roi[3] - roi[2]) // roi[5]
+framebuffer = np.zeros((frame_h, frame_w), dtype=np.uint16)
 framebuffer = cam.grab()[0]
 
 
@@ -105,20 +118,20 @@ class FramebufferWindow(QMainWindow):
 
         self.logtext = ""  # Initialize logtext
 
+        cam.setup_acquisition(mode="sequence")
+        cam.start_acquisition()
+
         # Self-arming single-shot timer (never blocks the UI)
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.update_frame)
         self.timer.start(0)  # Kick off first frame immediately
 
-        self.snapshot = np.zeros((2960, 5056), dtype=np.uint8)
+        self.snapshot = np.zeros(self.framebuffer.shape, dtype=np.uint8)
         height, width = self.snapshot.shape
         q_image = QImage(self.snapshot, width, height, QImage.Format_Grayscale8)
         pixmap = QPixmap.fromImage(q_image).scaled(self.snap_label.width(), self.snap_label.height(), Qt.KeepAspectRatio)
         self.snap_label.setPixmap(pixmap)
-
-        cam.setup_acquisition(mode="sequence")
-        cam.start_acquisition()
 
         # Capture toggle
         self.capturing = True
@@ -192,8 +205,8 @@ class FramebufferWindow(QMainWindow):
             self.timer.stop()
             try:
                 cam.stop_acquisition()
-            except Exception:
-                pass
+            except Exception as e:
+                self.logtext += f"\n[WARN] Stop acquisition: {e}"
             self.capture_button.setText("Start Capture")
             self.capturing = False
             self.logtext += "\n[INFO] Capture stopped"
@@ -230,7 +243,7 @@ class FramebufferWindow(QMainWindow):
             h = self.roi_h_spin.value()
 
             cam.stop_acquisition()
-            cam.set_roi(x, x + w, y, y + h, 1, 1)
+            cam.set_roi(x, x + w, y, y + h, hbin=2, vbin=2)
             cam.setup_acquisition(mode="sequence")
             cam.start_acquisition()
 
@@ -344,8 +357,12 @@ class FramebufferWindow(QMainWindow):
                 scrollbar.setValue(scrollbar.maximum())
             else:
                 self.cam_status_widget.setText("Camera: Disconnected")
+                self.logtext += "\n[WARN] read_newest_image returned None"
+                self.log.setText(self.logtext)
         except Exception as e:
             self.cam_status_widget.setText("Camera: Disconnected")
+            self.logtext += f"\n[ERROR] read_newest_image failed: {e}"
+            self.log.setText(self.logtext)
 
         if self.capturing:
             self.timer.start(0)
@@ -369,7 +386,7 @@ class FramebufferWindow(QMainWindow):
             #print("Clearing snapshot...")
             self.logtext += "\n[INFO] Clear pressed"
             self.log.setText(self.logtext)
-            self.snapshot = np.zeros((2960, 5056), dtype=np.uint8)
+            self.snapshot = np.zeros(self.framebuffer.shape, dtype=np.uint8)
             height, width = self.snapshot.shape
             q_image = QImage(self.snapshot, width, height, QImage.Format_Grayscale8)
             pixmap = QPixmap.fromImage(q_image).scaled(self.snap_label.width(), self.snap_label.height(), Qt.KeepAspectRatio)
