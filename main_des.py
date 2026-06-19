@@ -117,7 +117,6 @@ class FramebufferWindow(QMainWindow):
             print("Uh oh! Can't bind to UI button (clear). Check names and things in designer.")
 
         self.logtext = ""  # Initialize logtext
-        self._none_count = 0  # Rate-limiter for "struggling" warning
 
         cam.setup_acquisition(mode="sequence")
         cam.start_acquisition()
@@ -160,7 +159,7 @@ class FramebufferWindow(QMainWindow):
         self.cam_status_widget = QLabel("Camera: Disconnected")
         self.fps_widget = QLabel("FPS: --")
         self.roi_widget = QLabel("Frame: --")
-        self.binning_widget = QLabel("Binning: --")
+        self.binning_widget = QLabel("Hardware Binning: --")
         self.ipg_status_widget = QLabel("IPG: Disconnected")
 
         toolbar.addWidget(self.cam_status_widget)
@@ -364,11 +363,6 @@ class FramebufferWindow(QMainWindow):
                 if self.capturing:
                     self.timer.start(0)
             else:
-                self._none_count += 1
-                if self._none_count == 30:
-                    self.logtext += "\n[WARN] Python is struggling to keep up!"
-                    self.log.setText(self.logtext)
-                    self._none_count = 0
                 if self.capturing:
                     self.timer.start(0)
         except Exception as e:
