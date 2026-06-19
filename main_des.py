@@ -117,6 +117,7 @@ class FramebufferWindow(QMainWindow):
             print("Uh oh! Can't bind to UI button (clear). Check names and things in designer.")
 
         self.logtext = ""  # Initialize logtext
+        self._none_count = 0  # Rate-limiter for "struggling" warning
 
         cam.setup_acquisition(mode="sequence")
         cam.start_acquisition()
@@ -159,11 +160,13 @@ class FramebufferWindow(QMainWindow):
         self.cam_status_widget = QLabel("Camera: Disconnected")
         self.fps_widget = QLabel("FPS: --")
         self.roi_widget = QLabel("Frame: --")
+        self.binning_widget = QLabel("Binning: --")
         self.ipg_status_widget = QLabel("IPG: Disconnected")
 
         toolbar.addWidget(self.cam_status_widget)
         toolbar.addWidget(self.fps_widget)
         toolbar.addWidget(self.roi_widget)
+        toolbar.addWidget(self.binning_widget)
         toolbar.addSeparator()
         toolbar.addWidget(self.ipg_status_widget)
         self.addToolBar(toolbar)
@@ -187,6 +190,8 @@ class FramebufferWindow(QMainWindow):
                 f"Current ROI: ({roi[0]}, {roi[2]}) → ({roi[1]}, {roi[3]})  [{w}×{h}]"
             )
             self.roi_widget.setText(f"Frame: {w}×{h}")
+            hb, vb = roi[4], roi[5]
+            self.binning_widget.setText(f"Binning: {hb}×{vb}")
         except Exception as e:
             self.logtext += f"\n[ERROR] Failed to read ROI: {e}"
             self.log.setText(self.logtext)
@@ -254,6 +259,7 @@ class FramebufferWindow(QMainWindow):
                 f"Current ROI: ({x}, {y}) → ({x+w}, {y+h})  [{w}×{h}]"
             )
             self.roi_widget.setText(f"Frame: {w}×{h}")
+            self.binning_widget.setText(f"Binning: 2×2")
             self.logtext += f"\n[INFO] ROI set to ({x},{y}) {w}×{h}"
         except Exception as e:
             self.logtext += f"\n[ERROR] Apply ROI failed: {e}"
@@ -355,17 +361,22 @@ class FramebufferWindow(QMainWindow):
 
                 scrollbar = self.log.verticalScrollBar()
                 scrollbar.setValue(scrollbar.maximum())
+                if self.capturing:
+                    self.timer.start(0)
             else:
-                self.cam_status_widget.setText("Camera: Disconnected")
-                self.logtext += "\n[WARN] read_newest_image returned None"
-                self.log.setText(self.logtext)
+                self._none_count += 1
+                if self._none_count == 30:
+                    self.logtext += "\n[WARN] Python is struggling to keep up!"
+                    self.log.setText(self.logtext)
+                    self._none_count = 0
+                if self.capturing:
+                    self.timer.start(0)
         except Exception as e:
             self.cam_status_widget.setText("Camera: Disconnected")
             self.logtext += f"\n[ERROR] read_newest_image failed: {e}"
             self.log.setText(self.logtext)
-
-        if self.capturing:
-            self.timer.start(0)
+            if self.capturing:
+                self.timer.start(0)
 
     def take_snapshot(self):
         try:
