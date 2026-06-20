@@ -1,8 +1,8 @@
 import os
+import sys
 from ctypes import *
 from ctypes.wintypes import *
 
-#helper function definitions
 def makecmd (cmdstr):
     cmdlen = len(cmdstr) + 1
     cmdarr = c_byte * cmdlen
@@ -30,20 +30,15 @@ class D5020Error(Exception):
 class D5020:
     def __init__(self, dll_path=None):
         if dll_path is None:
-            dll_path = os.path.dirname(__file__) + r"\usbdrvd"
-        try:
-            self._dll = WinDLL(dll_path)
-        except Exception as e:
-            raise D5020Error(f"Failed to load {dll_path}: {e}")
-
+            dll_path = r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd"
+        self._dll = WinDLL(dll_path)
         self._dll.USBDRVD_OpenDevice.restype = HANDLE
         self._dll.USBDRVD_InterruptWrite.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
         self._dll.USBDRVD_InterruptRead.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
         self._dll.USBDRVD_CloseDevice.argtypes = [HANDLE]
-
-        self._dev = None
         self._usb_pid = c_uint(5020)
-        self._flags = c_uint(1073741824)
+        self._flagsandattrs = c_uint(1073741824)
+        self._dev = None
 
     def device_count(self):
         return self._dll.USBDRVD_GetDevCount(self._usb_pid)
@@ -51,12 +46,10 @@ class D5020:
     def open(self, dev_number=1):
         if self._dev is not None:
             return
-        num = self.device_count()
-        if num == 0:
+        numdevices = self.device_count()
+        if numdevices == 0:
             raise D5020Error("No Devices Found.")
-        self._dev = self._dll.USBDRVD_OpenDevice(dev_number, self._flags, self._usb_pid)
-        if not self._dev:
-            raise D5020Error("USBDRVD_OpenDevice returned NULL")
+        self._dev = self._dll.USBDRVD_OpenDevice(c_uint(dev_number), self._flagsandattrs, self._usb_pid)
 
     def close(self):
         if self._dev:
@@ -72,19 +65,12 @@ class D5020:
     def _cmd(self, command):
         if not self._dev:
             raise D5020Error("Device not opened")
-
-        (cmdtosend, cmdlen) = makecmd(command)
-        bytecount = self._dll.USBDRVD_InterruptWrite(
-            self._dev, c_uint(1),
-            (c_byte * len(cmdtosend))(*cmdtosend),
-            cmdlen
-        )
-
+        (cmdtosend,cmdlen) = makecmd(command)
+        cmdptr = (c_byte * len(cmdtosend))(*cmdtosend)
+        self._dll.USBDRVD_InterruptWrite(self._dev, c_uint(1), cmdptr, cmdlen)
         usbbuffer = c_byte * 64
         cmdstatus = usbbuffer()
-        self._dll.USBDRVD_InterruptRead(
-            self._dev, c_uint(0), cmdstatus, c_uint(64)
-        )
+        self._dll.USBDRVD_InterruptRead(self._dev, c_uint(0), cmdstatus, c_uint(64))
         return buffer2str(cmdstatus)
 
     def version(self):
@@ -111,13 +97,12 @@ class D5020:
 
 
 if __name__ == "__main__":
-    dllpath = os.path.dirname(__file__) + r"\..\example\usbdrvd"
-    dev = D5020(dll_path=dllpath)
+    dev = D5020(dll_path=r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd")
 
     numdevices = dev.device_count()
     if numdevices == 0:
         print("No Devices Found.")
-        exit(1)
+        sys.exit(1)
 
     print(" ")
     print(f"Found {numdevices} device(s).")
