@@ -10,6 +10,8 @@ from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap, QFont
 from PyQt5 import uic
 from illumination import IPG
+from piezo.panel import PiezoPanel
+from lcd.panel import LCDPanel
 import os
 import ctypes
 
@@ -176,6 +178,21 @@ class FramebufferWindow(QMainWindow):
         self.fps_timer = QTimer(self)
         self.fps_timer.timeout.connect(self.update_fps)
         self.fps_timer.start(1000)
+
+        # Piezo and LCD panels (right column, below Camera Settings)
+        def _log_line(msg):
+            self.logtext += msg
+            self.log.setText(self.logtext)
+            sb = self.log.verticalScrollBar()
+            sb.setValue(sb.maximum())
+
+        self.piezo_panel = PiezoPanel(log_callback=_log_line)
+        self.piezo_panel.setGeometry(680, 660, 256, 160)
+        self.piezo_panel.setParent(self.centralWidget())
+
+        self.lcd_panel = LCDPanel(log_callback=_log_line)
+        self.lcd_panel.setGeometry(680, 825, 256, 110)
+        self.lcd_panel.setParent(self.centralWidget())
 
         # Camera settings
         try:

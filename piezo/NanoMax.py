@@ -227,7 +227,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="MDT693B piezo controller test")
-    parser.add_argument("--port", default="COM6", help="Serial port (default: COM6)")
+    parser.add_argument("--port", default="/dev/ttyACM0", help="Serial port (default: /dev/ttyACM0)") #COM6
     parser.add_argument("--baud", type=int, default=115200)
     args = parser.parse_args()
 
