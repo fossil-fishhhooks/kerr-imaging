@@ -132,12 +132,10 @@ class FramebufferWindow(QMainWindow):
         self.cam_status_widget = QLabel("Camera: Disconnected")
         self.fps_widget = QLabel("FPS: --")
         self.roi_widget = QLabel("Frame: --")
-        self.binning_widget = QLabel("Hardware Binning: --")
+        self.binning_widget = QLabel("Binning: --")
         self.ipg_status_widget = QLabel("IPG: Disconnected")
         self.piezo_status_widget = QLabel("Piezo: Disconnected")
         self.lcd_status_widget = QLabel("LCD: Disconnected")
-        self.piezo_status_widget.setStyleSheet("color: gray")
-        self.lcd_status_widget.setStyleSheet("color: gray")
 
         toolbar.addWidget(self.cam_status_widget)
         toolbar.addWidget(self.fps_widget)
@@ -145,7 +143,9 @@ class FramebufferWindow(QMainWindow):
         toolbar.addWidget(self.binning_widget)
         toolbar.addSeparator()
         toolbar.addWidget(self.ipg_status_widget)
+        toolbar.addSeparator()
         toolbar.addWidget(self.piezo_status_widget)
+        toolbar.addSeparator()
         toolbar.addWidget(self.lcd_status_widget)
         self.addToolBar(toolbar)
 

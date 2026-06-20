@@ -104,6 +104,7 @@ class PiezoPanel(QGroupBox):
         self._sliders = {}
         self._spins = {}
         self._actuals = {}
+        self._pendings = {}
         for axis, color in [("X", "#e74c3c"), ("Y", "#2ecc71"), ("Z", "#3498db")]:
             row = QHBoxLayout()
             lbl = QLabel(axis)
@@ -120,6 +121,8 @@ class PiezoPanel(QGroupBox):
             spn.setFixedWidth(68)
             unit = QLabel("V")
             unit.setFixedWidth(10)
+            pending = QLabel("")
+            pending.setFixedWidth(12)
             act = QLabel("—")
             act.setFixedWidth(54)
             act.setStyleSheet("color: gray")
@@ -131,11 +134,13 @@ class PiezoPanel(QGroupBox):
             row.addWidget(sld)
             row.addWidget(spn)
             row.addWidget(unit)
+            row.addWidget(pending)
             row.addWidget(act)
             layout.addLayout(row)
             self._sliders[axis] = sld
             self._spins[axis] = spn
             self._actuals[axis] = act
+            self._pendings[axis] = pending
 
         all_row = QHBoxLayout()
         all_lbl = QLabel("All")
@@ -152,8 +157,8 @@ class PiezoPanel(QGroupBox):
         self._all_spin.setFixedWidth(68)
         all_unit = QLabel("V")
         all_unit.setFixedWidth(10)
-        self._live_indicator = QLabel("")
-        self._live_indicator.setFixedWidth(16)
+        all_spacer = QLabel("")
+        all_spacer.setFixedWidth(12)
 
         self._all_slider.valueChanged.connect(self._on_all_slider)
         self._all_spin.valueChanged.connect(self._on_all_spin)
@@ -162,7 +167,7 @@ class PiezoPanel(QGroupBox):
         all_row.addWidget(self._all_slider)
         all_row.addWidget(self._all_spin)
         all_row.addWidget(all_unit)
-        all_row.addWidget(self._live_indicator)
+        all_row.addWidget(all_spacer)
         layout.addLayout(all_row)
 
         self._set_enabled(False)
@@ -177,6 +182,8 @@ class PiezoPanel(QGroupBox):
         self._sliders[axis].setValue(int(val * 10))
         self._sliders[axis].blockSignals(False)
         if self._connected and self._poller:
+            self._pendings[axis].setText("→")
+            self._pendings[axis].setStyleSheet("color: #e67e22")
             self._poller.set_voltage(axis, val)
 
     @pyqtSlot(object)
@@ -186,6 +193,7 @@ class PiezoPanel(QGroupBox):
             if v is not None:
                 self._actuals[axis].setText(f"{v:>5.1f} V")
                 self._actuals[axis].setStyleSheet("color: #888")
+                self._pendings[axis].setText("")
             else:
                 self._actuals[axis].setText("?.?")
 
@@ -209,6 +217,9 @@ class PiezoPanel(QGroupBox):
             self._sliders[axis].setValue(v)
             self._sliders[axis].blockSignals(False)
         if self._connected and self._poller:
+            for axis in ("X", "Y", "Z"):
+                self._pendings[axis].setText("→")
+                self._pendings[axis].setStyleSheet("color: #e67e22")
             self._poller.set_all(val)
 
     def _on_all_spin(self, v):
@@ -223,6 +234,9 @@ class PiezoPanel(QGroupBox):
             self._sliders[axis].setValue(int(v * 10))
             self._sliders[axis].blockSignals(False)
         if self._connected and self._poller:
+            for axis in ("X", "Y", "Z"):
+                self._pendings[axis].setText("→")
+                self._pendings[axis].setStyleSheet("color: #e67e22")
             self._poller.set_all(v)
 
     def _toggle_connect(self):
@@ -244,8 +258,6 @@ class PiezoPanel(QGroupBox):
             self._status.setText(f"Connected: {port}")
             self._status.setStyleSheet("color: green")
             self._set_enabled(True)
-            self._live_indicator.setText("↻")
-            self._live_indicator.setStyleSheet("color: #4a4")
             for axis in ("X", "Y", "Z"):
                 try:
                     v = getattr(dev, f"{axis.lower()}voltage")()
@@ -287,7 +299,6 @@ class PiezoPanel(QGroupBox):
         self._connect_btn.setText("Connect")
         self._status.setText("Disconnected")
         self._status.setStyleSheet("color: gray")
-        self._live_indicator.setText("")
         self._set_enabled(False)
         for axis in ("X", "Y", "Z"):
             self._actuals[axis].setText("—")
