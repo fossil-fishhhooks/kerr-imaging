@@ -8,6 +8,8 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QObject
 from .NanoMax import NanoMax_MDT693B, DeviceError
 
+_TOLERANCE = 0.5
+
 
 class _PiezoPoller(QObject):
     results = pyqtSignal(object)
@@ -82,6 +84,7 @@ class PiezoPanel(QGroupBox):
         self._status_label = status_label
         self._device = None
         self._poller = None
+        self._targets = {}
         self._build_ui()
         self._connected = False
 
@@ -182,6 +185,7 @@ class PiezoPanel(QGroupBox):
         self._sliders[axis].setValue(int(val * 10))
         self._sliders[axis].blockSignals(False)
         if self._connected and self._poller:
+            self._targets[axis] = val
             self._pendings[axis].setText("→")
             self._pendings[axis].setStyleSheet("color: #e67e22")
             self._poller.set_voltage(axis, val)
@@ -193,7 +197,9 @@ class PiezoPanel(QGroupBox):
             if v is not None:
                 self._actuals[axis].setText(f"{v:>5.1f} V")
                 self._actuals[axis].setStyleSheet("color: #888")
-                self._pendings[axis].setText("")
+                tgt = self._targets.get(axis)
+                if tgt is not None and abs(v - tgt) < _TOLERANCE:
+                    self._pendings[axis].setText("")
             else:
                 self._actuals[axis].setText("?.?")
 
@@ -218,6 +224,7 @@ class PiezoPanel(QGroupBox):
             self._sliders[axis].blockSignals(False)
         if self._connected and self._poller:
             for axis in ("X", "Y", "Z"):
+                self._targets[axis] = val
                 self._pendings[axis].setText("→")
                 self._pendings[axis].setStyleSheet("color: #e67e22")
             self._poller.set_all(val)
@@ -235,6 +242,7 @@ class PiezoPanel(QGroupBox):
             self._sliders[axis].blockSignals(False)
         if self._connected and self._poller:
             for axis in ("X", "Y", "Z"):
+                self._targets[axis] = v
                 self._pendings[axis].setText("→")
                 self._pendings[axis].setStyleSheet("color: #e67e22")
             self._poller.set_all(v)
@@ -275,7 +283,6 @@ class PiezoPanel(QGroupBox):
             self._poller.start()
             if self._status_label:
                 self._status_label.setText("Piezo: Connected")
-                self._status_label.setStyleSheet("color: green")
             self._connected_changed.emit(True)
             self._log_msg(f"Connected to {port}")
         except DeviceError as e:
@@ -304,6 +311,5 @@ class PiezoPanel(QGroupBox):
             self._actuals[axis].setText("—")
         if self._status_label:
             self._status_label.setText("Piezo: Disconnected")
-            self._status_label.setStyleSheet("color: gray")
         self._connected_changed.emit(False)
         self._log_msg("Disconnected")

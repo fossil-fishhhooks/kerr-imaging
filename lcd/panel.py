@@ -96,7 +96,6 @@ class LCDPanel(QGroupBox):
         self._set_enabled(True)
         if self._status_label:
             self._status_label.setText("LCD: Connected (mock)")
-            self._status_label.setStyleSheet("color: green")
         self._connected_changed.emit(True)
 
     def _disconnect(self):
@@ -107,6 +106,5 @@ class LCDPanel(QGroupBox):
         self._set_enabled(False)
         if self._status_label:
             self._status_label.setText("LCD: Disconnected")
-            self._status_label.setStyleSheet("color: gray")
         self._connected_changed.emit(False)
         self._log_msg("Disconnected")
