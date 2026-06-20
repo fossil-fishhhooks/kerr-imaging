@@ -19,6 +19,14 @@ class D5020:
         path = dll_path or _DLL_NAME
         try:
             self._dll = ctypes.WinDLL(path)
+        except OSError as e:
+            raise D5020Error(
+                f"Failed to load {path}: {e}\n"
+                f"  (winerror={e.winerror}, code={e.errno})\n"
+                f"  Check that usbdrvd.dll is installed and all its dependencies\n"
+                f"  (VC++ redist, libusb) are present. Use Dependency Walker or\n"
+                f"  `dumpbin /dependents usbdrvd.dll` to find missing deps."
+            )
         except Exception as e:
             raise D5020Error(f"Failed to load {path}: {e}")
         self._setup_argtypes()
