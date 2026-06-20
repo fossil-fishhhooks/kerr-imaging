@@ -1,45 +1,11 @@
 import os
-import ctypes
 from PyQt5.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QComboBox, QSpinBox, QDoubleSpinBox
+    QComboBox, QSpinBox
 )
 from PyQt5.QtCore import Qt
 from illumination import IPG
-
-
-DLP_AVAILABLE = False
-_dlp_dll = None
-
-
-class DLPDevice(ctypes.Structure):
-    _fields_ = [
-        ("handle", ctypes.c_void_p),
-        ("id", ctypes.c_ushort),
-        ("ch", ctypes.c_ushort),
-    ]
-
-
-try:
-    _DLP_DLL_PATH = r"C:\Users\Arin\PycharmProjects\cameratest\DLP4710EVM_CY.dll"
-    _dlp_dll = ctypes.WinDLL(_DLP_DLL_PATH)
-    _dlp_dll.OpenWithAutoconnect.argtypes = [ctypes.POINTER(DLPDevice), ctypes.c_char_p]
-    _dlp_dll.OpenWithAutoconnect.restype = ctypes.c_int
-    _dlp_dll.WriteOperateMode.argtypes = [DLPDevice, ctypes.c_uint8]
-    _dlp_dll.WriteOperateMode.restype = ctypes.c_int
-    _dlp_dll.WriteExternalVideoSourceFormat.argtypes = [DLPDevice, ctypes.c_uint8]
-    _dlp_dll.WriteExternalVideoSourceFormat.restype = ctypes.c_int
-    _dlp_dll.WriteDisplaySize.argtypes = [DLPDevice, ctypes.c_uint16, ctypes.c_uint16]
-    _dlp_dll.WriteDisplaySize.restype = ctypes.c_int
-    _dlp_dll.Close.argtypes = [DLPDevice]
-    _dlp_dll.Close.restype = ctypes.c_int
-    _dlp_dll.Version.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
-    DLP_AVAILABLE = True
-except Exception:
-    pass
-
-
-_COLOR_MAP = {"Red": 16711680, "Green": 65280, "Blue": 255}
+from illumination.dlp import DLP_AVAILABLE, dlp_open, dlp_close, COLOR_MAP
 
 
 class LightControlPanel(QGroupBox):
@@ -56,7 +22,6 @@ class LightControlPanel(QGroupBox):
     def _build_ui(self):
         layout = QVBoxLayout(self)
 
-        # --- Port row ---
         port_row = QHBoxLayout()
         self._port_combo = QComboBox()
         self._port_combo.addItem("Select a port...")
@@ -72,7 +37,6 @@ class LightControlPanel(QGroupBox):
         port_row.addStretch()
         layout.addLayout(port_row)
 
-        # --- Arc params row 1: inradius / outradius / color ---
         arc_row1 = QHBoxLayout()
         arc_row1.addWidget(QLabel("In:"))
         self._inradius = QSpinBox()
@@ -90,7 +54,6 @@ class LightControlPanel(QGroupBox):
         arc_row1.addWidget(self._color)
         layout.addLayout(arc_row1)
 
-        # --- Arc params row 2: startang / endang ---
         arc_row2 = QHBoxLayout()
         arc_row2.addWidget(QLabel("Start:"))
         self._startang = QSpinBox()
@@ -101,11 +64,9 @@ class LightControlPanel(QGroupBox):
         self._endang = QSpinBox()
         self._endang.setRange(0, 360)
         self._endang.setValue(360)
-        arc_row2.addWidget(self._endang)
         arc_row2.addStretch()
         layout.addLayout(arc_row2)
 
-        # --- Action buttons ---
         btn_row = QHBoxLayout()
         self._arc_btn = QPushButton("Set Arc")
         self._arc_btn.setEnabled(False)
@@ -135,22 +96,7 @@ class LightControlPanel(QGroupBox):
             self._log_msg("Pattern generator running")
 
             if DLP_AVAILABLE:
-                self._dlp_device = DLPDevice()
-                acx_path = os.path.join(
-                    os.path.dirname(__file__), "dlp.acx"
-                )
-                ret = _dlp_dll.OpenWithAutoconnect(
-                    ctypes.byref(self._dlp_device),
-                    ctypes.c_char_p(acx_path.encode()),
-                )
-                self._log_msg(f"DLP open code {ret}")
-                _dlp_dll.WriteOperateMode(self._dlp_device, ctypes.c_uint8(0x00))
-                _dlp_dll.WriteExternalVideoSourceFormat(
-                    self._dlp_device, ctypes.c_uint8(0x43)
-                )
-                _dlp_dll.WriteDisplaySize(
-                    self._dlp_device, ctypes.c_uint16(1920), ctypes.c_uint16(1080)
-                )
+                self._dlp_device = dlp_open()
                 self._log_msg("DLP initialized")
             else:
                 self._log_msg("DLP not available (Linux or missing DLL)")
@@ -167,11 +113,8 @@ class LightControlPanel(QGroupBox):
 
     def _disconnect(self):
         try:
-            if self._dlp_device is not None:
-                _dlp_dll.WriteOperateMode(self._dlp_device, ctypes.c_uint8(0xFF))
-                _dlp_dll.Close(self._dlp_device)
-                self._dlp_device = None
-                self._log_msg("DLP standby + closed")
+            dlp_close(self._dlp_device)
+            self._dlp_device = None
         except Exception as e:
             self._log_msg(f"DLP close error: {e}")
         self._ipg_port = None
@@ -190,7 +133,7 @@ class LightControlPanel(QGroupBox):
             outr = self._outradius.value()
             sa = self._startang.value()
             ea = self._endang.value()
-            color = _COLOR_MAP[self._color.currentText()]
+            color = COLOR_MAP[self._color.currentText()]
             cmd = f"arc {inr} {outr} {sa} {ea} {color}\r"
             IPG.send_message(self._ipg_port, cmd)
             self._log_msg(f"Sent: {cmd.strip()}")
@@ -202,11 +145,8 @@ class LightControlPanel(QGroupBox):
             if self._ipg_port:
                 IPG.send_message(self._ipg_port, "quit\r")
                 self._log_msg("Sent quit to IPG")
-            if self._dlp_device is not None:
-                _dlp_dll.WriteOperateMode(self._dlp_device, ctypes.c_uint8(0xFF))
-                _dlp_dll.Close(self._dlp_device)
-                self._dlp_device = None
-                self._log_msg("DLP closed")
+            dlp_close(self._dlp_device)
+            self._dlp_device = None
             self._ipg_port = None
             self._connect_btn.setText("Connect")
             self._status.setText("Sleep")

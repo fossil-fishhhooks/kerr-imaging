@@ -10,40 +10,10 @@ from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap, QFont
 from PyQt5 import uic
 from illumination import IPG
+from illumination.dlp import DLP_AVAILABLE, dlp_open, dlp_close, DLPDevice
 from piezo.panel import PiezoPanel
 from lcd.panel import LCDPanel
 import os
-import ctypes
-
-# Optional DLP DLL (Windows only, graceful fallback on Linux)
-DLP_AVAILABLE = False
-dlp_dll = None
-
-class DLPDevice(ctypes.Structure):
-    _fields_ = [
-        ("handle", ctypes.c_void_p),
-        ("id", ctypes.c_ushort),
-        ("ch", ctypes.c_ushort)
-    ]
-
-try:
-    DLP_DLL_PATH = r"C:\Users\Arin\PycharmProjects\cameratest\DLP4710EVM_CY.dll"
-    dlp_dll = ctypes.WinDLL(DLP_DLL_PATH)
-    dlp_dll.OpenWithAutoconnect.argtypes = [ctypes.POINTER(DLPDevice), ctypes.c_char_p]
-    dlp_dll.OpenWithAutoconnect.restype = ctypes.c_int
-    dlp_dll.WriteOperateMode.argtypes = [DLPDevice, ctypes.c_uint8]
-    dlp_dll.WriteOperateMode.restype = ctypes.c_int
-    dlp_dll.WriteExternalVideoSourceFormat.argtypes = [DLPDevice, ctypes.c_uint8]
-    dlp_dll.WriteExternalVideoSourceFormat.restype = ctypes.c_int
-    dlp_dll.WriteDisplaySize.argtypes = [DLPDevice, ctypes.c_uint16, ctypes.c_uint16]
-    dlp_dll.WriteDisplaySize.restype = ctypes.c_int
-    dlp_dll.Close.argtypes = [DLPDevice]
-    dlp_dll.Close.restype = ctypes.c_int
-    dlp_dll.Version.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
-    DLP_AVAILABLE = True
-    print(f"[DLP] DLP4710EVM_CY.dll loaded")
-except Exception:
-    print("[DLP] DLP4710EVM_CY.dll not available — DLP control disabled")
 
 
 
@@ -305,14 +275,7 @@ class FramebufferWindow(QMainWindow):
             self.logtext += "\n[IPG] Pattern generator running"
 
             if DLP_AVAILABLE:
-                self.dlp_device = DLPDevice()
-                ret = dlp_dll.OpenWithAutoconnect(
-                    ctypes.byref(self.dlp_device), ctypes.c_char_p(os.path.join(os.path.dirname(__file__), "illumination", "dlp.acx").encode())
-                )
-                self.logtext += f"\n[DLP] Open with code {ret}"
-                dlp_dll.WriteOperateMode(self.dlp_device, ctypes.c_uint8(0x00))
-                dlp_dll.WriteExternalVideoSourceFormat(self.dlp_device, ctypes.c_uint8(0x43))
-                dlp_dll.WriteDisplaySize(self.dlp_device, ctypes.c_uint16(1920), ctypes.c_uint16(1080))
+                self.dlp_device = dlp_open()
                 self.logtext += "\n[DLP] DLP initialized"
             else:
                 self.logtext += "\n[DLP] DLP not available (Linux or missing DLL)"
@@ -349,12 +312,8 @@ class FramebufferWindow(QMainWindow):
                 IPG.send_message(self.ipg_port, "quit\r")
                 self.logtext += "\n[IPG] Sent quit command"
 
-            if self.dlp_device is not None:
-                ret = dlp_dll.WriteOperateMode(self.dlp_device, ctypes.c_uint8(0xFF))
-                self.logtext += f"\n[DLP] Standby set with code {ret}"
-                dlp_dll.Close(self.dlp_device)
-                self.logtext += "\n[DLP] DLP closed"
-                self.dlp_device = None
+            dlp_close(self.dlp_device)
+            self.dlp_device = None
 
             self.ipg_port = None
             self.ipg_status_label.setText("Disconnected")
