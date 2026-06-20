@@ -44,7 +44,7 @@ def buffer2str (cmdstatus):
     return responsestr #return the response string
     
 #DLL Setup
-usbdrvdpath = os.path.dirname(__file__) + r"\usbdrvd" #Find usbdrvd.dll at path of this example file.
+usbdrvdpath = os.path.dirname(__file__) + r"\..\..\usbdrvd" #Find usbdrvd.dll at path of this example file.
 mlousb = WinDLL(usbdrvdpath) #Load the DLL.
 #Set up return and argument defines for DLL Functions
 mlousb.USBDRVD_OpenDevice.restype = HANDLE
