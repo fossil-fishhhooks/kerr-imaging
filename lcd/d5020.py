@@ -20,15 +20,20 @@ class D5020:
         try:
             self._dll = ctypes.WinDLL(path)
         except OSError as e:
+            we = getattr(e, 'winerror', None)
             raise D5020Error(
                 f"Failed to load {path}: {e}\n"
-                f"  (winerror={e.winerror}, code={e.errno})\n"
-                f"  Check that usbdrvd.dll is installed and all its dependencies\n"
-                f"  (VC++ redist, libusb) are present. Use Dependency Walker or\n"
-                f"  `dumpbin /dependents usbdrvd.dll` to find missing deps."
+                f"  type={type(e).__name__}  winerror={we}  args={e.args}\n"
+                f"\n"
+                f"  === Debugging steps ===\n"
+                f"  1. Is usbdrvd.dll in the search path (same dir as script, or C:\\Windows\\System32)?\n"
+                f"  2. List its dependencies: `dumpbin /dependents usbdrvd.dll`\n"
+                f"  3. Install missing VC++ redist at https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
+                f"  4. If it needs libusb0.dll, install libusb-win32 from https://libusb.info/\n"
+                f"  5. 32-bit DLL with 64-bit Python? Match the architecture."
             )
         except Exception as e:
-            raise D5020Error(f"Failed to load {path}: {e}")
+            raise D5020Error(f"Failed to load {path}: [{type(e).__name__}] {e}")
         self._setup_argtypes()
         self._dev = None
         self._pipe0 = None
