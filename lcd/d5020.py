@@ -6,9 +6,8 @@ _DLL_NAME = "usbdrvd.dll"
 _USB_PID = 0x139C
 _FLAGS = 0x40000000
 
-_GUID_STRUCT = (ctypes.c_ubyte * 16)().from_buffer_copy(
-    bytes.fromhex("a22b5b8bc67041989385aaba9dfc7d2b")
-)
+_GUID_BYTES = bytes.fromhex("a22b5b8bc67041989385aaba9dfc7d2b")
+_GUID_STRUCT = (ctypes.c_ubyte * 16).from_buffer_copy(_GUID_BYTES)
 
 
 class D5020Error(Exception):
