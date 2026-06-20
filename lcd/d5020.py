@@ -2,7 +2,7 @@ import ctypes
 from ctypes import wintypes
 
 
-_DLL_NAME = "usbdrvd.dll"
+_DLL_NAME = r"C:\\Users\\Arin\\PycharmProjects\\cameratest\\usbdrvd.dll"
 _USB_PID = 0x139C
 _FLAGS = 0x40000000
 
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="D5020 LCD controller test")
-    parser.add_argument("--dll", default="usbdrvd.dll", help="Path to usbdrvd.dll")
+    parser.add_argument("--dll", default=r"C:\\Users\\Arin\\PycharmProjects\\cameratest\\usbdrvd.dll", help="Path to usbdrvd.dll")
     args = parser.parse_args()
 
     dev = D5020(dll_path=args.dll)
