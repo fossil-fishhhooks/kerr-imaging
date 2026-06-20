@@ -4,11 +4,8 @@ from ctypes import wintypes
 
 
 _DLL_NAME = r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd.dll"
-_USB_PID = 0x139C
+_USB_PID = 5020
 _FLAGS = 0x40000000
-
-_GUID_BYTES = bytes.fromhex("a22b5b8bc67041989385aaba9dfc7d2b")
-_GUID_STRUCT = (ctypes.c_ubyte * 16).from_buffer_copy(_GUID_BYTES)
 
 
 class D5020Error(Exception):
@@ -27,11 +24,10 @@ class D5020:
                 f"  type={type(e).__name__}  winerror={we}  args={e.args}\n"
                 f"\n"
                 f"  === Debugging steps ===\n"
-                f"  1. Is usbdrvd.dll in the search path (same dir as script, or C:\\Windows\\System32)?\n"
-                f"  2. List its dependencies: `dumpbin /dependents usbdrvd.dll`\n"
-                f"  3. Install missing VC++ redist at https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
-                f"  4. If it needs libusb0.dll, install libusb-win32 from https://libusb.info/\n"
-                f"  5. 32-bit DLL with 64-bit Python? Match the architecture."
+                f"  1. Is usbdrvd.dll in the search path?\n"
+                f"  2. List deps: `dumpbin /dependents usbdrvd.dll`\n"
+                f"  3. Install VC++ redist: https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
+                f"  4. 32-bit DLL with 64-bit Python? Match the architecture."
             )
         except Exception as e:
             raise D5020Error(f"Failed to load {path}: [{type(e).__name__}] {e}")
@@ -40,35 +36,25 @@ class D5020:
 
     def _setup_argtypes(self):
         d = self._dll
-        d.USBDRVD_GetDevCount.argtypes = [wintypes.DWORD]
         d.USBDRVD_GetDevCount.restype = wintypes.UINT
+        d.USBDRVD_GetDevCount.argtypes = [wintypes.UINT]
 
-        d.USBDRVD_OpenDevice.argtypes = [wintypes.UINT, wintypes.DWORD, wintypes.DWORD]
         d.USBDRVD_OpenDevice.restype = wintypes.HANDLE
+        d.USBDRVD_OpenDevice.argtypes = [wintypes.UINT, wintypes.UINT, wintypes.UINT]
+
+        d.USBDRVD_InterruptWrite.restype = wintypes.UINT
+        d.USBDRVD_InterruptWrite.argtypes = [
+            wintypes.HANDLE, wintypes.UINT,
+            ctypes.POINTER(ctypes.c_byte), wintypes.UINT,
+        ]
+
+        d.USBDRVD_InterruptRead.restype = None
+        d.USBDRVD_InterruptRead.argtypes = [
+            wintypes.HANDLE, wintypes.UINT,
+            ctypes.POINTER(ctypes.c_byte), wintypes.UINT,
+        ]
 
         d.USBDRVD_CloseDevice.argtypes = [wintypes.HANDLE]
-        d.USBDRVD_CloseDevice.restype = None
-
-        d.USBDRVD_PipeOpen.argtypes = [
-            wintypes.UINT, wintypes.UINT, wintypes.DWORD,
-            ctypes.POINTER(ctypes.c_ubyte * 16),
-        ]
-        d.USBDRVD_PipeOpen.restype = wintypes.HANDLE
-
-        d.USBDRVD_PipeClose.argtypes = [wintypes.HANDLE]
-        d.USBDRVD_PipeClose.restype = None
-
-        d.USBDRVD_BulkWrite.argtypes = [
-            wintypes.HANDLE, wintypes.ULONG,
-            ctypes.c_char_p, wintypes.ULONG,
-        ]
-        d.USBDRVD_BulkWrite.restype = wintypes.ULONG
-
-        d.USBDRVD_BulkRead.argtypes = [
-            wintypes.HANDLE, wintypes.ULONG,
-            ctypes.c_char_p, wintypes.ULONG,
-        ]
-        d.USBDRVD_BulkRead.restype = wintypes.ULONG
 
     def device_count(self):
         return self._dll.USBDRVD_GetDevCount(_USB_PID)
@@ -94,66 +80,81 @@ class D5020:
     def __exit__(self, *args):
         self.close()
 
+    @staticmethod
+    def _make_cmd(cmdstr):
+        cmdlen = len(cmdstr) + 1
+        cmdarr = (ctypes.c_byte * cmdlen)()
+        for i, ch in enumerate(cmdstr):
+            cmdarr[i] = ord(ch)
+        cmdarr[cmdlen - 1] = 13
+        return cmdarr, cmdlen
+
+    @staticmethod
+    def _buffer_to_str(buf):
+        parts = []
+        for i in range(64):
+            if buf[i] == 13:
+                break
+            parts.append(chr(buf[i]))
+        return "".join(parts)
+
     def _cmd(self, command, timeout=None):
         if timeout is None:
             timeout = getattr(self, "_cmd_timeout", 3.0)
         if not self._dev:
             raise D5020Error("Device not opened")
-        cmd_bytes = command.encode("ascii")
 
-        def write_thread():
-            return self._dll.USBDRVD_BulkWrite(self._dev, 1, cmd_bytes, len(cmd_bytes))
+        cmdarr, cmdlen = self._make_cmd(command)
+        cmdptr = ctypes.cast(cmdarr, ctypes.POINTER(ctypes.c_byte))
 
-        wresult = [0]
+        def do_write():
+            return self._dll.USBDRVD_InterruptWrite(
+                self._dev, 1, cmdptr, cmdlen
+            )
+
+        wret = [0]
         wexc = []
         def _write():
             try:
-                wresult[0] = write_thread()
+                wret[0] = do_write()
             except Exception as e:
                 wexc.append(e)
         wt = threading.Thread(target=_write, daemon=True)
         wt.start()
         wt.join(timeout)
         if wt.is_alive():
-            raise D5020Error(f"BulkWrite timed out (cmd={command.strip()})")
+            raise D5020Error(f"InterruptWrite timed out (cmd={command})")
         if wexc:
-            raise D5020Error(f"BulkWrite error: {wexc[0]}")
-        if wresult[0] != len(cmd_bytes):
-            raise D5020Error(f"BulkWrite wrote {wresult[0]} of {len(cmd_bytes)}")
+            raise D5020Error(f"InterruptWrite error: {wexc[0]}")
 
-        buf = ctypes.create_string_buffer(256)
-        rresult = [0]
+        buf = (ctypes.c_byte * 64)()
         rexc = []
         def _read():
             try:
-                rresult[0] = self._dll.USBDRVD_BulkRead(self._dev, 0, buf, 256)
+                self._dll.USBDRVD_InterruptRead(self._dev, 0, buf, 64)
             except Exception as e:
                 rexc.append(e)
         rt = threading.Thread(target=_read, daemon=True)
         rt.start()
         rt.join(timeout)
         if rt.is_alive():
-            raise D5020Error(f"BulkRead timed out (cmd={command.strip()})")
+            raise D5020Error(f"InterruptRead timed out (cmd={command})")
         if rexc:
-            raise D5020Error(f"BulkRead error: {rexc[0]}")
-        read = rresult[0]
-        if read == 0:
-            raise D5020Error(f"BulkRead returned 0 bytes (cmd={command.strip()})")
-        raw = buf.raw[:read]
-        raw = raw.split(b"\r")[0].strip(b"\r\n\x00 ")
-        return raw.decode("ascii", errors="replace")
+            raise D5020Error(f"InterruptRead error: {rexc[0]}")
+
+        return self._buffer_to_str(buf)
 
     def version(self):
-        return self._cmd("ver:?\n")
+        return self._cmd("ver:?")
 
     def retardance(self, port, value=None):
         if value is None:
-            raw = self._cmd(f"port:{port}:retardance:?\n")
+            raw = self._cmd(f"port:{port}:retardance:?")
             return self._parse_float(raw)
-        self._cmd(f"port:{port}:retardance:{value}\n")
+        self._cmd(f"port:{port}:retardance:{value}")
 
     def temperature(self):
-        raw = self._cmd("temp:?\n")
+        raw = self._cmd("temp:?")
         return self._parse_float(raw)
 
     @staticmethod
@@ -187,12 +188,8 @@ if __name__ == "__main__":
         try:
             print(f"Version: {dev.version()}")
         except D5020Error as e:
-            print(f"Error getting version: {e}")
-            print("The device was found but is not responding to commands.")
-            print("Possible causes:")
-            print("  - Wrong command format (need to reverse-engineer protocol)")
-            print("  - Wrong pipe numbers (try pipe 0 for write, pipe 1 for read)")
-            print("  - Device needs a different initialization sequence")
+            print(f"Error: {e}")
+            print("Device found but not responding. Check command format.")
             exit(1)
 
         for port in (0, 1):
