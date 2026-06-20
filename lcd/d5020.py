@@ -37,8 +37,6 @@ class D5020:
             raise D5020Error(f"Failed to load {path}: [{type(e).__name__}] {e}")
         self._setup_argtypes()
         self._dev = None
-        self._pipe0 = None
-        self._pipe1 = None
 
     def _setup_argtypes(self):
         d = self._dll
@@ -84,19 +82,8 @@ class D5020:
         self._dev = self._dll.USBDRVD_OpenDevice(dev_num, _FLAGS, _USB_PID)
         if not self._dev:
             raise D5020Error("USBDRVD_OpenDevice returned NULL")
-        self._pipe0 = self._dll.USBDRVD_PipeOpen(dev_num, 0, _FLAGS, _GUID_STRUCT)
-        self._pipe1 = self._dll.USBDRVD_PipeOpen(dev_num, 1, _FLAGS, _GUID_STRUCT)
-        if not self._pipe0 or not self._pipe1:
-            self.close()
-            raise D5020Error("Failed to open pipes")
 
     def close(self):
-        if self._pipe0:
-            self._dll.USBDRVD_PipeClose(self._pipe0)
-            self._pipe0 = None
-        if self._pipe1:
-            self._dll.USBDRVD_PipeClose(self._pipe1)
-            self._pipe1 = None
         if self._dev:
             self._dll.USBDRVD_CloseDevice(self._dev)
             self._dev = None
@@ -113,32 +100,45 @@ class D5020:
         if not self._dev:
             raise D5020Error("Device not opened")
         cmd_bytes = command.encode("ascii")
-        written = self._dll.USBDRVD_BulkWrite(
-            self._dev, 1, cmd_bytes, len(cmd_bytes)
-        )
-        if written != len(cmd_bytes):
-            raise D5020Error(f"BulkWrite wrote {written} of {len(cmd_bytes)}")
+
+        def write_thread():
+            return self._dll.USBDRVD_BulkWrite(self._dev, 1, cmd_bytes, len(cmd_bytes))
+
+        wresult = [0]
+        wexc = []
+        def _write():
+            try:
+                wresult[0] = write_thread()
+            except Exception as e:
+                wexc.append(e)
+        wt = threading.Thread(target=_write, daemon=True)
+        wt.start()
+        wt.join(timeout)
+        if wt.is_alive():
+            raise D5020Error(f"BulkWrite timed out (cmd={command.strip()})")
+        if wexc:
+            raise D5020Error(f"BulkWrite error: {wexc[0]}")
+        if wresult[0] != len(cmd_bytes):
+            raise D5020Error(f"BulkWrite wrote {wresult[0]} of {len(cmd_bytes)}")
 
         buf = ctypes.create_string_buffer(256)
-        result = [0]
-        exc = []
-
-        def read_thread():
+        rresult = [0]
+        rexc = []
+        def _read():
             try:
-                result[0] = self._dll.USBDRVD_BulkRead(self._dev, 0, buf, 256)
+                rresult[0] = self._dll.USBDRVD_BulkRead(self._dev, 0, buf, 256)
             except Exception as e:
-                exc.append(e)
-
-        t = threading.Thread(target=read_thread, daemon=True)
-        t.start()
-        t.join(timeout)
-        if t.is_alive():
-            raise D5020Error("BulkRead timed out after 3s (device not responding)")
-        if exc:
-            raise D5020Error(f"BulkRead error: {exc[0]}")
-        read = result[0]
+                rexc.append(e)
+        rt = threading.Thread(target=_read, daemon=True)
+        rt.start()
+        rt.join(timeout)
+        if rt.is_alive():
+            raise D5020Error(f"BulkRead timed out (cmd={command.strip()})")
+        if rexc:
+            raise D5020Error(f"BulkRead error: {rexc[0]}")
+        read = rresult[0]
         if read == 0:
-            raise D5020Error("BulkRead returned 0 bytes")
+            raise D5020Error(f"BulkRead returned 0 bytes (cmd={command.strip()})")
         raw = buf.raw[:read]
         raw = raw.split(b"\r")[0].strip(b"\r\n\x00 ")
         return raw.decode("ascii", errors="replace")
