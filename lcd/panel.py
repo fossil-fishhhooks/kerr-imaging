@@ -3,6 +3,10 @@ from PyQt5.QtWidgets import (
     QSlider, QDoubleSpinBox
 )
 from PyQt5.QtCore import Qt, pyqtSignal
+from .d5020 import D5020, D5020Error
+
+
+_TOLERANCE = 0.02
 
 
 class LCDPanel(QGroupBox):
@@ -13,6 +17,7 @@ class LCDPanel(QGroupBox):
         super().__init__("LCD Retardance", parent)
         self._log = log_callback or (lambda msg: None)
         self._status_label = status_label
+        self._device = None
         self._connected = False
         self._build_ui()
 
@@ -75,11 +80,11 @@ class LCDPanel(QGroupBox):
         self._sliders[port].blockSignals(True)
         self._sliders[port].setValue(int(val * 100))
         self._sliders[port].blockSignals(False)
-        if self._connected:
-            self._on_ret_change(port, val)
-
-    def _on_ret_change(self, port, val):
-        pass
+        if self._connected and self._device:
+            try:
+                self._device.retardance(port, val)
+            except Exception as e:
+                self._log_msg(f"Port {port} set failed: {e}")
 
     def _toggle_connect(self):
         if self._connected:
@@ -88,17 +93,46 @@ class LCDPanel(QGroupBox):
             self._connect()
 
     def _connect(self):
-        self._log_msg("LCD hardware connection not yet implemented")
-        self._connected = True
-        self._connect_btn.setText("Disconnect")
-        self._status.setText("Connected (mock)")
-        self._status.setStyleSheet("color: green")
-        self._set_enabled(True)
-        if self._status_label:
-            self._status_label.setText("LCD: Connected (mock)")
-        self._connected_changed.emit(True)
+        try:
+            dev = D5020()
+            dev.open()
+            self._device = dev
+            self._connected = True
+            self._connect_btn.setText("Disconnect")
+            self._status.setText("Connected")
+            self._status.setStyleSheet("color: green")
+            self._set_enabled(True)
+            for port in (0, 1):
+                try:
+                    v = dev.retardance(port)
+                    self._spins[port].blockSignals(True)
+                    self._sliders[port].blockSignals(True)
+                    self._spins[port].setValue(round(v, 2))
+                    self._sliders[port].setValue(int(v * 100))
+                    self._spins[port].blockSignals(False)
+                    self._sliders[port].blockSignals(False)
+                except Exception:
+                    pass
+            if self._status_label:
+                self._status_label.setText("LCD: Connected")
+            self._connected_changed.emit(True)
+            self._log_msg("LCD connected")
+        except D5020Error as e:
+            self._log_msg(f"LCD connection failed: {e}")
+            self._status.setText("Failed")
+            self._status.setStyleSheet("color: red")
+        except Exception as e:
+            self._log_msg(f"LCD connection error: {e}")
+            self._status.setText("Failed")
+            self._status.setStyleSheet("color: red")
 
     def _disconnect(self):
+        try:
+            if self._device:
+                self._device.close()
+        except Exception as e:
+            self._log_msg(f"Close error: {e}")
+        self._device = None
         self._connected = False
         self._connect_btn.setText("Connect")
         self._status.setText("Disconnected")
@@ -107,4 +141,4 @@ class LCDPanel(QGroupBox):
         if self._status_label:
             self._status_label.setText("LCD: Disconnected")
         self._connected_changed.emit(False)
-        self._log_msg("Disconnected")
+        self._log_msg("LCD disconnected")
