@@ -2,13 +2,17 @@ from PyQt5.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QSlider, QDoubleSpinBox
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 
 
 class LCDPanel(QGroupBox):
-    def __init__(self, log_callback=None, parent=None):
+
+    _connected_changed = pyqtSignal(bool)
+
+    def __init__(self, log_callback=None, status_label=None, parent=None):
         super().__init__("LCD Retardance", parent)
         self._log = log_callback or (lambda msg: None)
+        self._status_label = status_label
         self._connected = False
         self._build_ui()
 
@@ -87,9 +91,13 @@ class LCDPanel(QGroupBox):
         self._log_msg("LCD hardware connection not yet implemented")
         self._connected = True
         self._connect_btn.setText("Disconnect")
-        self._status.setText("Mock connected")
+        self._status.setText("Connected (mock)")
         self._status.setStyleSheet("color: green")
         self._set_enabled(True)
+        if self._status_label:
+            self._status_label.setText("LCD: Connected (mock)")
+            self._status_label.setStyleSheet("color: green")
+        self._connected_changed.emit(True)
 
     def _disconnect(self):
         self._connected = False
@@ -97,4 +105,8 @@ class LCDPanel(QGroupBox):
         self._status.setText("Disconnected")
         self._status.setStyleSheet("color: gray")
         self._set_enabled(False)
+        if self._status_label:
+            self._status_label.setText("LCD: Disconnected")
+            self._status_label.setStyleSheet("color: gray")
+        self._connected_changed.emit(False)
         self._log_msg("Disconnected")

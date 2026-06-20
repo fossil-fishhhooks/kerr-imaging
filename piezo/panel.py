@@ -1,21 +1,89 @@
+import queue
+import time
+import threading
 from PyQt5.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QSlider, QDoubleSpinBox
 )
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QObject
 from .NanoMax import NanoMax_MDT693B, DeviceError
 
 
+class _PiezoPoller(QObject):
+    results = pyqtSignal(object)
+
+    def __init__(self, device, interval=0.5):
+        super().__init__()
+        self._device = device
+        self._interval = interval
+        self._running = False
+        self._cmds = queue.Queue()
+
+    def start(self):
+        self._running = True
+        t = threading.Thread(target=self._run, daemon=True)
+        t.start()
+
+    def stop(self):
+        self._running = False
+
+    def set_voltage(self, axis, val):
+        self._cmds.put(("axis", axis, val))
+
+    def set_all(self, val):
+        self._cmds.put(("all", val))
+
+    def poll_now(self):
+        try:
+            vals = {}
+            for axis in ("X", "Y", "Z"):
+                vals[axis] = getattr(self._device, f"{axis.lower()}voltage")()
+            self.results.emit(vals)
+        except Exception:
+            pass
+
+    def _run(self):
+        while self._running:
+            for _ in range(50):
+                if not self._running:
+                    return
+                try:
+                    cmd = self._cmds.get_nowait()
+                    if cmd[0] == "axis":
+                        _, axis, val = cmd
+                        getattr(self._device, f"{axis.lower()}voltage")(val)
+                    elif cmd[0] == "all":
+                        _, val = cmd
+                        self._device.allvoltage(val)
+                except queue.Empty:
+                    break
+                except Exception:
+                    pass
+            try:
+                vals = {}
+                for axis in ("X", "Y", "Z"):
+                    vals[axis] = getattr(self._device, f"{axis.lower()}voltage")()
+                self.results.emit(vals)
+            except Exception:
+                pass
+            for _ in range(max(1, int(self._interval * 100))):
+                if not self._running:
+                    return
+                time.sleep(0.01)
+
+
 class PiezoPanel(QGroupBox):
-    def __init__(self, log_callback=None, parent=None):
+
+    _connected_changed = pyqtSignal(bool)
+
+    def __init__(self, log_callback=None, status_label=None, parent=None):
         super().__init__("Piezo Control", parent)
         self._log = log_callback or (lambda msg: None)
+        self._status_label = status_label
         self._device = None
+        self._poller = None
         self._build_ui()
         self._connected = False
-        self._poll_timer = QTimer(self)
-        self._poll_timer.timeout.connect(self._poll_actual)
-        self._poll_timer.setInterval(500)
 
     def _log_msg(self, msg):
         self._log(f"\n[PIEZO] {msg}")
@@ -84,8 +152,8 @@ class PiezoPanel(QGroupBox):
         self._all_spin.setFixedWidth(68)
         all_unit = QLabel("V")
         all_unit.setFixedWidth(10)
-        all_act = QLabel("")
-        all_act.setFixedWidth(54)
+        self._live_indicator = QLabel("")
+        self._live_indicator.setFixedWidth(16)
 
         self._all_slider.valueChanged.connect(self._on_all_slider)
         self._all_spin.valueChanged.connect(self._on_all_spin)
@@ -94,7 +162,7 @@ class PiezoPanel(QGroupBox):
         all_row.addWidget(self._all_slider)
         all_row.addWidget(self._all_spin)
         all_row.addWidget(all_unit)
-        all_row.addWidget(all_act)
+        all_row.addWidget(self._live_indicator)
         layout.addLayout(all_row)
 
         self._set_enabled(False)
@@ -108,21 +176,17 @@ class PiezoPanel(QGroupBox):
         self._sliders[axis].blockSignals(True)
         self._sliders[axis].setValue(int(val * 10))
         self._sliders[axis].blockSignals(False)
-        if self._connected and self._device:
-            try:
-                getattr(self._device, f"{axis.lower()}voltage")(val)
-            except Exception as e:
-                self._log_msg(f"{axis} set failed: {e}")
+        if self._connected and self._poller:
+            self._poller.set_voltage(axis, val)
 
-    def _poll_actual(self):
-        if not self._connected or not self._device:
-            return
+    @pyqtSlot(object)
+    def _on_actual(self, vals):
         for axis in ("X", "Y", "Z"):
-            try:
-                v = getattr(self._device, f"{axis.lower()}voltage")()
+            v = vals.get(axis)
+            if v is not None:
                 self._actuals[axis].setText(f"{v:>5.1f} V")
                 self._actuals[axis].setStyleSheet("color: #888")
-            except Exception:
+            else:
                 self._actuals[axis].setText("?.?")
 
     def _set_enabled(self, enabled):
@@ -144,11 +208,8 @@ class PiezoPanel(QGroupBox):
             self._sliders[axis].blockSignals(True)
             self._sliders[axis].setValue(v)
             self._sliders[axis].blockSignals(False)
-        if self._connected and self._device:
-            try:
-                self._device.allvoltage(val)
-            except Exception as e:
-                self._log_msg(f"All set failed: {e}")
+        if self._connected and self._poller:
+            self._poller.set_all(val)
 
     def _on_all_spin(self, v):
         self._all_slider.blockSignals(True)
@@ -161,11 +222,8 @@ class PiezoPanel(QGroupBox):
             self._sliders[axis].blockSignals(True)
             self._sliders[axis].setValue(int(v * 10))
             self._sliders[axis].blockSignals(False)
-        if self._connected and self._device:
-            try:
-                self._device.allvoltage(v)
-            except Exception as e:
-                self._log_msg(f"All set failed: {e}")
+        if self._connected and self._poller:
+            self._poller.set_all(v)
 
     def _toggle_connect(self):
         if self._connected:
@@ -186,6 +244,8 @@ class PiezoPanel(QGroupBox):
             self._status.setText(f"Connected: {port}")
             self._status.setStyleSheet("color: green")
             self._set_enabled(True)
+            self._live_indicator.setText("↻")
+            self._live_indicator.setStyleSheet("color: #4a4")
             for axis in ("X", "Y", "Z"):
                 try:
                     v = getattr(dev, f"{axis.lower()}voltage")()
@@ -197,8 +257,14 @@ class PiezoPanel(QGroupBox):
                     self._spins[axis].blockSignals(False)
                 except Exception:
                     pass
-            self._poll_actual()
-            self._poll_timer.start()
+            self._poller = _PiezoPoller(dev, interval=0.5)
+            self._poller.results.connect(self._on_actual)
+            self._poller.poll_now()
+            self._poller.start()
+            if self._status_label:
+                self._status_label.setText("Piezo: Connected")
+                self._status_label.setStyleSheet("color: green")
+            self._connected_changed.emit(True)
             self._log_msg(f"Connected to {port}")
         except DeviceError as e:
             self._log_msg(f"Not an MDT693B: {e}")
@@ -208,7 +274,9 @@ class PiezoPanel(QGroupBox):
             self._status.setStyleSheet("color: red")
 
     def _disconnect(self):
-        self._poll_timer.stop()
+        if self._poller:
+            self._poller.stop()
+            self._poller = None
         try:
             if self._device:
                 self._device.close()
@@ -219,7 +287,12 @@ class PiezoPanel(QGroupBox):
         self._connect_btn.setText("Connect")
         self._status.setText("Disconnected")
         self._status.setStyleSheet("color: gray")
+        self._live_indicator.setText("")
         self._set_enabled(False)
         for axis in ("X", "Y", "Z"):
             self._actuals[axis].setText("—")
+        if self._status_label:
+            self._status_label.setText("Piezo: Disconnected")
+            self._status_label.setStyleSheet("color: gray")
+        self._connected_changed.emit(False)
         self._log_msg("Disconnected")
