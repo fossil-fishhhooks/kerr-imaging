@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QSlider, QDoubleSpinBox
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from .NanoMax import NanoMax_MDT693B, DeviceError
 
 
@@ -13,6 +13,9 @@ class PiezoPanel(QGroupBox):
         self._device = None
         self._build_ui()
         self._connected = False
+        self._poll_timer = QTimer(self)
+        self._poll_timer.timeout.connect(self._poll_actual)
+        self._poll_timer.setInterval(500)
 
     def _log_msg(self, msg):
         self._log(f"\n[PIEZO] {msg}")
@@ -20,7 +23,6 @@ class PiezoPanel(QGroupBox):
     def _build_ui(self):
         layout = QVBoxLayout(self)
 
-        # Connect row
         top = QHBoxLayout()
         self._connect_btn = QPushButton("Connect")
         self._connect_btn.clicked.connect(self._toggle_connect)
@@ -31,25 +33,28 @@ class PiezoPanel(QGroupBox):
         top.addStretch()
         layout.addLayout(top)
 
-        # Axis rows: label + slider + spinbox + unit
         self._sliders = {}
         self._spins = {}
+        self._actuals = {}
         for axis, color in [("X", "#e74c3c"), ("Y", "#2ecc71"), ("Z", "#3498db")]:
             row = QHBoxLayout()
             lbl = QLabel(axis)
             lbl.setFixedWidth(16)
             lbl.setStyleSheet(f"font-weight: bold; color: {color}")
             sld = QSlider(Qt.Horizontal)
-            sld.setRange(0, 1500)  # 0-150 V, 0.1 V resolution
+            sld.setRange(0, 1500)
             sld.setValue(0)
             spn = QDoubleSpinBox()
             spn.setRange(0, 150)
             spn.setDecimals(1)
             spn.setSingleStep(1)
             spn.setValue(0)
-            spn.setFixedWidth(72)
+            spn.setFixedWidth(68)
             unit = QLabel("V")
-            unit.setFixedWidth(12)
+            unit.setFixedWidth(10)
+            act = QLabel("—")
+            act.setFixedWidth(54)
+            act.setStyleSheet("color: gray")
 
             sld.valueChanged.connect(lambda v, s=spn: self._slider_to_spin(s, v / 10))
             spn.valueChanged.connect(lambda v, a=axis: self._spin_changed(a, v))
@@ -58,11 +63,12 @@ class PiezoPanel(QGroupBox):
             row.addWidget(sld)
             row.addWidget(spn)
             row.addWidget(unit)
+            row.addWidget(act)
             layout.addLayout(row)
             self._sliders[axis] = sld
             self._spins[axis] = spn
+            self._actuals[axis] = act
 
-        # All axis row
         all_row = QHBoxLayout()
         all_lbl = QLabel("All")
         all_lbl.setFixedWidth(16)
@@ -75,9 +81,11 @@ class PiezoPanel(QGroupBox):
         self._all_spin.setDecimals(1)
         self._all_spin.setSingleStep(1)
         self._all_spin.setValue(0)
-        self._all_spin.setFixedWidth(72)
+        self._all_spin.setFixedWidth(68)
         all_unit = QLabel("V")
-        all_unit.setFixedWidth(12)
+        all_unit.setFixedWidth(10)
+        all_act = QLabel("")
+        all_act.setFixedWidth(54)
 
         self._all_slider.valueChanged.connect(self._on_all_slider)
         self._all_spin.valueChanged.connect(self._on_all_spin)
@@ -86,6 +94,7 @@ class PiezoPanel(QGroupBox):
         all_row.addWidget(self._all_slider)
         all_row.addWidget(self._all_spin)
         all_row.addWidget(all_unit)
+        all_row.addWidget(all_act)
         layout.addLayout(all_row)
 
         self._set_enabled(False)
@@ -101,14 +110,20 @@ class PiezoPanel(QGroupBox):
         self._sliders[axis].blockSignals(False)
         if self._connected and self._device:
             try:
-                if axis == "X":
-                    self._device.xvoltage(val)
-                elif axis == "Y":
-                    self._device.yvoltage(val)
-                elif axis == "Z":
-                    self._device.zvoltage(val)
+                getattr(self._device, f"{axis.lower()}voltage")(val)
             except Exception as e:
                 self._log_msg(f"{axis} set failed: {e}")
+
+    def _poll_actual(self):
+        if not self._connected or not self._device:
+            return
+        for axis in ("X", "Y", "Z"):
+            try:
+                v = getattr(self._device, f"{axis.lower()}voltage")()
+                self._actuals[axis].setText(f"{v:>5.1f} V")
+                self._actuals[axis].setStyleSheet("color: #888")
+            except Exception:
+                self._actuals[axis].setText("?.?")
 
     def _set_enabled(self, enabled):
         for axis in ("X", "Y", "Z"):
@@ -182,6 +197,8 @@ class PiezoPanel(QGroupBox):
                     self._spins[axis].blockSignals(False)
                 except Exception:
                     pass
+            self._poll_actual()
+            self._poll_timer.start()
             self._log_msg(f"Connected to {port}")
         except DeviceError as e:
             self._log_msg(f"Not an MDT693B: {e}")
@@ -191,6 +208,7 @@ class PiezoPanel(QGroupBox):
             self._status.setStyleSheet("color: red")
 
     def _disconnect(self):
+        self._poll_timer.stop()
         try:
             if self._device:
                 self._device.close()
@@ -202,4 +220,6 @@ class PiezoPanel(QGroupBox):
         self._status.setText("Disconnected")
         self._status.setStyleSheet("color: gray")
         self._set_enabled(False)
+        for axis in ("X", "Y", "Z"):
+            self._actuals[axis].setText("—")
         self._log_msg("Disconnected")
