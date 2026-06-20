@@ -1,8 +1,9 @@
 import ctypes
+import threading
 from ctypes import wintypes
 
 
-_DLL_NAME = r"C:\\Users\\Arin\\PycharmProjects\\cameratest\\usbdrvd.dll"
+_DLL_NAME = r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd.dll"
 _USB_PID = 0x139C
 _FLAGS = 0x40000000
 
@@ -20,7 +21,7 @@ class D5020:
         try:
             self._dll = ctypes.WinDLL(path)
         except OSError as e:
-            we = getattr(e, 'winerror', None)
+            we = getattr(e, "winerror", None)
             raise D5020Error(
                 f"Failed to load {path}: {e}\n"
                 f"  type={type(e).__name__}  winerror={we}  args={e.args}\n"
@@ -106,7 +107,9 @@ class D5020:
     def __exit__(self, *args):
         self.close()
 
-    def _cmd(self, command):
+    def _cmd(self, command, timeout=None):
+        if timeout is None:
+            timeout = getattr(self, "_cmd_timeout", 3.0)
         if not self._dev:
             raise D5020Error("Device not opened")
         cmd_bytes = command.encode("ascii")
@@ -115,8 +118,25 @@ class D5020:
         )
         if written != len(cmd_bytes):
             raise D5020Error(f"BulkWrite wrote {written} of {len(cmd_bytes)}")
+
         buf = ctypes.create_string_buffer(256)
-        read = self._dll.USBDRVD_BulkRead(self._dev, 0, buf, 256)
+        result = [0]
+        exc = []
+
+        def read_thread():
+            try:
+                result[0] = self._dll.USBDRVD_BulkRead(self._dev, 0, buf, 256)
+            except Exception as e:
+                exc.append(e)
+
+        t = threading.Thread(target=read_thread, daemon=True)
+        t.start()
+        t.join(timeout)
+        if t.is_alive():
+            raise D5020Error("BulkRead timed out after 3s (device not responding)")
+        if exc:
+            raise D5020Error(f"BulkRead error: {exc[0]}")
+        read = result[0]
         if read == 0:
             raise D5020Error("BulkRead returned 0 bytes")
         raw = buf.raw[:read]
@@ -150,10 +170,12 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="D5020 LCD controller test")
-    parser.add_argument("--dll", default=r"C:\\Users\\Arin\\PycharmProjects\\cameratest\\usbdrvd.dll", help="Path to usbdrvd.dll")
+    parser.add_argument("--dll", default=r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd.dll")
+    parser.add_argument("--timeout", type=float, default=3.0)
     args = parser.parse_args()
 
     dev = D5020(dll_path=args.dll)
+    dev._cmd_timeout = args.timeout
     count = dev.device_count()
     print(f"Devices found: {count}")
     if count < 1:
@@ -162,18 +184,33 @@ if __name__ == "__main__":
 
     with dev:
         dev.open(1)
-        print(f"Version: {dev.version()}")
+        try:
+            print(f"Version: {dev.version()}")
+        except D5020Error as e:
+            print(f"Error getting version: {e}")
+            print("The device was found but is not responding to commands.")
+            print("Possible causes:")
+            print("  - Wrong command format (need to reverse-engineer protocol)")
+            print("  - Wrong pipe numbers (try pipe 0 for write, pipe 1 for read)")
+            print("  - Device needs a different initialization sequence")
+            exit(1)
+
         for port in (0, 1):
-            v = dev.retardance(port)
-            print(f"Port {port} retardance: {v}")
+            try:
+                v = dev.retardance(port)
+                print(f"Port {port} retardance: {v}")
+            except D5020Error as e:
+                print(f"Port {port}: {e}")
+
         try:
             t = dev.temperature()
             print(f"Temperature: {t}")
-        except Exception:
+        except D5020Error:
             print("Temperature not available")
+
         print("Setting port 0 to 0.500 ...")
-        dev.retardance(0, 0.500)
-        print(f"  Port 0 now: {dev.retardance(0)}")
-        print("Setting port 0 back to 0.000 ...")
-        dev.retardance(0, 0.000)
-        print(f"  Port 0 now: {dev.retardance(0)}")
+        try:
+            dev.retardance(0, 0.500)
+            print(f"  Port 0 now: {dev.retardance(0)}")
+        except D5020Error as e:
+            print(f"  Set failed: {e}")
