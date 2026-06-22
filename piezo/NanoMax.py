@@ -42,12 +42,9 @@ class NanoMax_MDT693B:
     def __exit__(self, *args):
         self.close()
 
-    def msg(self, cmd):
-        self._ser.reset_input_buffer()
-        self._ser.write((cmd + "\n").encode())
-        self._ser.flush()
+    def _read_response(self):
         raw = b""
-        self._ser.timeout = 0.005
+        self._ser.timeout = 0.05
         while True:
             b = self._ser.read(1)
             if not b:
@@ -56,7 +53,18 @@ class NanoMax_MDT693B:
         self._ser.timeout = 0.5
         text = raw.decode("utf-8", errors="replace")
         lines = [l.strip() for l in text.split("\r") if l.strip()]
-        lines = [l for l in lines if l != ">"]
+        return [l for l in lines if l != ">"]
+
+    def msg(self, cmd):
+        for _ in range(3):
+            self._ser.timeout = 0.01
+            while self._ser.read(1):
+                pass
+            self._ser.write((cmd + "\n").encode())
+            self._ser.flush()
+            lines = self._read_response()
+            if lines or _ == 2:
+                break
         return lines
 
     def _strip_val(self, lines):
