@@ -158,17 +158,24 @@ if __name__ == "__main__":
     print(f"  response: {buffer2str(cmdstatus)}")
     print()
 
-    for port in (0, 1):
-        cmdstr = f"port:{port}:retardance:?"
+    cmds_to_try = [
+        "port:0:retardance:?",
+        "port0:retardance:?",
+        "p0r?",
+        "ch:0:retardance:?",
+        "chan:0:retardance:?",
+        "ret:0:?",
+        "port:0:ret:?",
+    ]
+    for cmdstr in cmds_to_try:
         (cmdtosend, cmdlen) = makecmd(cmdstr)
         cmdptr = (c_byte * len(cmdtosend))(*cmdtosend)
-        print(f"InterruptWrite port:{port}:retardance:?...")
-        bc = mlousb.USBDRVD_InterruptWrite(devhandle, writepipe, cmdptr, cmdlen)
-        print(f"  wrote {bc} bytes")
+        # clear buffer before read
         cmdstatus = usbbuffer()
-        print(f"InterruptRead port {port}...")
+        bc = mlousb.USBDRVD_InterruptWrite(devhandle, writepipe, cmdptr, cmdlen)
         mlousb.USBDRVD_InterruptRead(devhandle, readpipe, cmdstatus, bufferlen)
-        print(f"  response: {buffer2str(cmdstatus)}")
+        resp = buffer2str(cmdstatus)
+        print(f"  '{cmdstr}'  =>  '{resp}'")
 
     print("\nClosing...")
     mlousb.USBDRVD_CloseDevice(devhandle)
