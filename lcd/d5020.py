@@ -118,59 +118,20 @@ class D5020:
 
 
 if __name__ == "__main__":
-    usbdrvdpath = r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd"
-    mlousb = WinDLL(usbdrvdpath)
-    mlousb.USBDRVD_OpenDevice.restype = HANDLE
-    mlousb.USBDRVD_InterruptWrite.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
-    mlousb.USBDRVD_InterruptRead.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
-    mlousb.USBDRVD_CloseDevice.argtypes = [HANDLE]
-
-    usb_pid = c_uint(5020)
-    numdevices = c_uint(0)
-    devhandle = HANDLE()
-    flagsandattrs = c_uint(1073741824)
-    devnumber = c_uint(1)
-    writepipe = c_uint(1)
-    readpipe = c_uint(0)
-    bytecount = c_uint(0)
-
-    cmdstr = ""
-    cmdlen = c_uint(0)
-    usbbuffer = c_byte * 64
-    cmdstatus = usbbuffer()
-    bufferlen = c_uint(64)
-    cmdresponsestr = ""
-
-    numdevices = mlousb.USBDRVD_GetDevCount(usb_pid)
-    if(numdevices == 0):
+    dll = r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd"
+    dev = D5020(dll_path=dll)
+    n = dev.device_count()
+    if n == 0:
         print("No Devices Found.")
         sys.exit(1)
-
-    devicesfound = "Found "+str(numdevices)+" device(s)."
-    print(" ")
-    print (devicesfound)
-    print(" ")
-
-    devhandle = mlousb.USBDRVD_OpenDevice(devnumber,flagsandattrs,usb_pid)
-
-    cmdstr = "ver:?"
-    (cmdtosend,cmdlen) = makecmd(cmdstr)
-    cmdptr = (c_byte * len(cmdtosend))(*cmdtosend)
-
-    bytecount = mlousb.USBDRVD_InterruptWrite(devhandle,writepipe,cmdptr,cmdlen)
-
-    mlousb.USBDRVD_InterruptRead(devhandle,readpipe,cmdstatus,bufferlen)
-    cmdresponsestr = buffer2str(cmdstatus)
-    print(cmdresponsestr)
-
+    print(f"\nFound {n} device(s).\n")
+    dev.open(1)
+    print(f"Version: {dev.version(timeout=5)}\n")
     for port in (0, 1):
-        cmdstr = f"port:{port}:retardance:?"
-        (cmdtosend,cmdlen) = makecmd(cmdstr)
-        cmdptr = (c_byte * len(cmdtosend))(*cmdtosend)
-        bytecount = mlousb.USBDRVD_InterruptWrite(devhandle,writepipe,cmdptr,cmdlen)
-        mlousb.USBDRVD_InterruptRead(devhandle,readpipe,cmdstatus,bufferlen)
-        cmdresponsestr = buffer2str(cmdstatus)
-        print(f"Port {port} retardance: {cmdresponsestr}")
-
-    mlousb.USBDRVD_CloseDevice(devhandle)
-    print(" ")
+        try:
+            val = dev.retardance(port, timeout=3)
+            print(f"Port {port} retardance: {val}")
+        except D5020Error as e:
+            print(f"Port {port} ERROR: {e}")
+    dev.close()
+    print("")
