@@ -158,21 +158,54 @@ if __name__ == "__main__":
     print(f"  response: {buffer2str(cmdstatus)}")
     print()
 
-    cmds_to_try = [
+    print("Trying various command formats with CR (\\r) terminator:")
+    cmds_cr = [
+        "ver:?",
         "port:0:retardance:?",
-        "port0:retardance:?",
+        "port:0:retardance:0",
+        "port0retardance?",
         "p0r?",
         "ch:0:retardance:?",
         "chan:0:retardance:?",
         "ret:0:?",
-        "port:0:ret:?",
+        "port:0:voltage:?",
+        "port:0:set:?",
+        "port:0:wave:?",
+        "PORT:0:RETARDANCE:?",
+        "help:?",
+        "cmds:?",
     ]
-    for cmdstr in cmds_to_try:
+    for cmdstr in cmds_cr:
         (cmdtosend, cmdlen) = makecmd(cmdstr)
         cmdptr = (c_byte * len(cmdtosend))(*cmdtosend)
-        # clear buffer before read
         cmdstatus = usbbuffer()
         bc = mlousb.USBDRVD_InterruptWrite(devhandle, writepipe, cmdptr, cmdlen)
+        if bc == 0:
+            print(f"  '{cmdstr}'  =>  WRITE FAILED (0 bytes)")
+            continue
+        mlousb.USBDRVD_InterruptRead(devhandle, readpipe, cmdstatus, bufferlen)
+        resp = buffer2str(cmdstatus)
+        print(f"  '{cmdstr}'  =>  '{resp}'")
+
+    def makecmd_lf(cmdstr):
+        cmdlen = len(cmdstr) + 1
+        cmdarr = c_byte * cmdlen
+        cmdtosend = cmdarr()
+        for x in range(cmdlen - 1):
+            cmdtosend[x] = ord(cmdstr[x])
+        cmdtosend[cmdlen-1] = 10  # LF
+        return (cmdtosend, cmdlen)
+
+    print("\nWith LF (\\n) terminator:")
+    for cmdstr in ["ver:?", "port:0:retardance:?", "port0retardance?",
+                    "p0r?", "ch:0:retardance:?", "help:?"]:
+        (cmdtosend, cmdlen) = makecmd_lf(cmdstr)
+        cmdptr = (c_byte * len(cmdtosend))(*cmdtosend)
+        cmdstatus = usbbuffer()
+        bc = mlousb.USBDRVD_InterruptWrite(devhandle, writepipe, cmdptr, cmdlen)
+        if bc == 0:
+            print(f"  '{cmdstr}'  =>  WRITE FAILED")
+            continue
         mlousb.USBDRVD_InterruptRead(devhandle, readpipe, cmdstatus, bufferlen)
         resp = buffer2str(cmdstatus)
         print(f"  '{cmdstr}'  =>  '{resp}'")
