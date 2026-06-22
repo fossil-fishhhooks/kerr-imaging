@@ -10,7 +10,7 @@ from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap, QFont
 from PyQt5 import uic
 from illumination import IPG
-from illumination.dlp import DLP_AVAILABLE, dlp_open, dlp_close, DLPDevice
+from illumination.dlp import DLP_AVAILABLE, dlp_open, dlp_close, DLPDevice, dlp_set_rgb_current_max, COLOR_RGB
 from piezo.panel import PiezoPanel
 from lcvr.panel import LCDPanel
 import os
@@ -121,6 +121,7 @@ class FramebufferWindow(QMainWindow):
         self.ipg_connect_button.clicked.connect(self.connect_ipg)
         self.arc_set_button.clicked.connect(self.send_arc)
         self.ipg_sleep_button.clicked.connect(self.sleep_ipg)
+        self.color_combo.currentTextChanged.connect(self._apply_dlp_color)
 
         # Top toolbar (acts as status bar)
         toolbar = QToolBar()
@@ -283,6 +284,7 @@ class FramebufferWindow(QMainWindow):
             if DLP_AVAILABLE:
                 self.dlp_device = dlp_open()
                 self.logtext += "\n[DLP] DLP initialized"
+                self._apply_dlp_color()
             else:
                 self.logtext += "\n[DLP] DLP not available (Linux or missing DLL)"
         except Exception as e:
@@ -301,14 +303,24 @@ class FramebufferWindow(QMainWindow):
             startang = self.startang_spin.value()
             endang = self.endang_spin.value()
 
-            color_map = {"Red": 16711680, "Green": 65280, "Blue": 255}
-            color = color_map[self.color_combo.currentText()]
-
-            cmd = f'arc {inradius} {outradius} {startang} {endang} {color}\r'
+            # always white — color is set directly on LEDs via WriteRGBCurrentMax
+            cmd = f'arc {inradius} {outradius} {startang} {endang} 16777215\r'
             IPG.send_message(self.ipg_port, cmd)
             self.logtext += f"\n[IPG] Sent: {cmd.strip()}"
         except Exception as e:
             self.logtext += f"\n[ERROR] Send arc failed: {e}"
+        self.log.setText(self.logtext)
+
+    def _apply_dlp_color(self):
+        name = self.color_combo.currentText()
+        if not name or not self.dlp_device:
+            return
+        r, g, b = COLOR_RGB[name]
+        try:
+            dlp_set_rgb_current_max(self.dlp_device, r, g, b)
+            self.logtext += f"\n[DLP] LED color: {name} ({r},{g},{b}) -> 16-bit"
+        except Exception as e:
+            self.logtext += f"\n[ERROR] Set DLP color failed: {e}"
         self.log.setText(self.logtext)
 
 
