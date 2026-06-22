@@ -1,5 +1,4 @@
 import serial
-import io
 import time
 
 
@@ -25,13 +24,12 @@ class NanoMax_MDT693B:
             stopbits=serial.STOPBITS_ONE,
             timeout=timeout,
         )
-        self._buf = io.TextIOWrapper(
-            io.BufferedRWPair(self._ser, self._ser, 2**20),
-            newline="\r",
-            line_buffering=True,
-        )
-        info = self.msg("id?")
-        if not info or not any("MDT693B" in line for line in info):
+        for _ in range(3):
+            info = self.msg("id?")
+            if info and any("MDT693B" in line for line in info):
+                break
+            time.sleep(0.1)
+        else:
             raise DeviceError(f"Not an MDT693B: {info}")
 
     def close(self):
@@ -45,12 +43,20 @@ class NanoMax_MDT693B:
         self.close()
 
     def msg(self, cmd):
-        self._buf.write(cmd + "\n")
-        self._buf.flush()
-        lines = self._buf.readlines()
-        lines = [line.strip() for line in lines if line.strip()]
-        if lines and lines[-1] == ">":
-            lines = lines[:-1]
+        self._ser.reset_input_buffer()
+        self._ser.write((cmd + "\n").encode())
+        self._ser.flush()
+        raw = b""
+        self._ser.timeout = 0.005
+        while True:
+            b = self._ser.read(1)
+            if not b:
+                break
+            raw += b
+        self._ser.timeout = 0.5
+        text = raw.decode("utf-8", errors="replace")
+        lines = [l.strip() for l in text.split("\r") if l.strip()]
+        lines = [l for l in lines if l != ">"]
         return lines
 
     def _strip_val(self, lines):

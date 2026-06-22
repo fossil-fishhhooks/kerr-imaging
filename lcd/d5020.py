@@ -1,26 +1,38 @@
+#Meadowlark Optics D5020 Python Wrapper
+#************************************************************************
+#
+#                               Kerr Imaging
+#
+# Wraps usbdrvd.dll to control a Meadowlark Optics D5020 Liquid Crystal
+# Variable Retarder.  Based on the official D5020Example.py.
+#
+#************************************************************************
+
 import os
 import sys
 from ctypes import *
 from ctypes.wintypes import *
 
 def makecmd (cmdstr):
-    cmdlen = len(cmdstr) + 1
-    cmdarr = c_byte * cmdlen
+#This function converts a command string to a byte array and adds the carriage return character to the end.
+    cmdlen = len(cmdstr) + 1 #set up length
+    cmdarr = c_byte * cmdlen #and command byte array
     cmdtosend = cmdarr()
-    chartmp = 0
-    for x in range(cmdlen - 1):
-        chartmp = ord(cmdstr[x])
-        cmdtosend[x] = chartmp
-    cmdtosend[cmdlen-1] = 13
-    return (cmdtosend,cmdlen)
+    chartmp = 0  #temp char variable
+    for x in range(cmdlen - 1):#go through command string
+        chartmp = ord(cmdstr[x]) #and get current character and convert to byte
+        cmdtosend[x] = chartmp #then put it as the current character in the array.
+    cmdtosend[cmdlen-1] = 13 #add CR
+    return (cmdtosend,cmdlen) #return the command array and length.
 
 def buffer2str (cmdstatus):
-    responsestr = ""
-    for x in range (64):
-        if cmdstatus[x] == 13:
-            break
-        responsestr = responsestr + chr(cmdstatus[x])
-    return responsestr
+#This function converts a char array to a string, finishing when it sees a carriage return.
+    responsestr = "" #make empty string
+    for x in range (64): #Go through response buffer.
+        if cmdstatus[x] == 13: #if found carriage return
+            break #function is done
+        responsestr = responsestr + chr(cmdstatus[x]) #otherwise add current character to string.
+    return responsestr #return the response string
 
 
 class D5020Error(Exception):
@@ -31,30 +43,29 @@ class D5020:
     def __init__(self, dll_path=None):
         if dll_path is None:
             dll_path = r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd"
-        self._dll = WinDLL(dll_path)
-        self._dll.USBDRVD_OpenDevice.restype = HANDLE
-        self._dll.USBDRVD_InterruptWrite.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
-        self._dll.USBDRVD_InterruptRead.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
-        self._dll.USBDRVD_CloseDevice.argtypes = [HANDLE]
-        self._usb_pid = c_uint(5020)
-        self._flagsandattrs = c_uint(1073741824)
-        self._dev = None
+        self.mlousb = WinDLL(dll_path)
+        self.mlousb.USBDRVD_OpenDevice.restype = HANDLE
+        self.mlousb.USBDRVD_InterruptWrite.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
+        self.mlousb.USBDRVD_InterruptRead.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
+        self.mlousb.USBDRVD_CloseDevice.argtypes = [HANDLE]
+        self.usb_pid = c_uint(5020)
+        self.flagsandattrs = c_uint(1073741824)
+        self.devhandle = None
 
     def device_count(self):
-        return self._dll.USBDRVD_GetDevCount(self._usb_pid)
+        return self.mlousb.USBDRVD_GetDevCount(self.usb_pid)
 
     def open(self, dev_number=1):
-        if self._dev is not None:
+        if self.devhandle is not None:
             return
-        numdevices = self.device_count()
-        if numdevices == 0:
+        if self.device_count() == 0:
             raise D5020Error("No Devices Found.")
-        self._dev = self._dll.USBDRVD_OpenDevice(c_uint(dev_number), self._flagsandattrs, self._usb_pid)
+        self.devhandle = self.mlousb.USBDRVD_OpenDevice(c_uint(dev_number), self.flagsandattrs, self.usb_pid)
 
     def close(self):
-        if self._dev:
-            self._dll.USBDRVD_CloseDevice(self._dev)
-            self._dev = None
+        if self.devhandle:
+            self.mlousb.USBDRVD_CloseDevice(self.devhandle)
+            self.devhandle = None
 
     def __enter__(self):
         return self
@@ -63,14 +74,14 @@ class D5020:
         self.close()
 
     def _cmd(self, command):
-        if not self._dev:
+        if not self.devhandle:
             raise D5020Error("Device not opened")
         (cmdtosend,cmdlen) = makecmd(command)
         cmdptr = (c_byte * len(cmdtosend))(*cmdtosend)
-        self._dll.USBDRVD_InterruptWrite(self._dev, c_uint(1), cmdptr, cmdlen)
+        self.mlousb.USBDRVD_InterruptWrite(self.devhandle, c_uint(1), cmdptr, cmdlen)
         usbbuffer = c_byte * 64
         cmdstatus = usbbuffer()
-        self._dll.USBDRVD_InterruptRead(self._dev, c_uint(0), cmdstatus, c_uint(64))
+        self.mlousb.USBDRVD_InterruptRead(self.devhandle, c_uint(0), cmdstatus, c_uint(64))
         return buffer2str(cmdstatus)
 
     def version(self):
@@ -97,42 +108,59 @@ class D5020:
 
 
 if __name__ == "__main__":
-    dev = D5020(dll_path=r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd")
+    usbdrvdpath = r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd"
+    mlousb = WinDLL(usbdrvdpath)
+    mlousb.USBDRVD_OpenDevice.restype = HANDLE
+    mlousb.USBDRVD_InterruptWrite.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
+    mlousb.USBDRVD_InterruptRead.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
+    mlousb.USBDRVD_CloseDevice.argtypes = [HANDLE]
 
-    numdevices = dev.device_count()
-    if numdevices == 0:
+    usb_pid = c_uint(5020)
+    numdevices = c_uint(0)
+    devhandle = HANDLE()
+    flagsandattrs = c_uint(1073741824)
+    devnumber = c_uint(1)
+    writepipe = c_uint(1)
+    readpipe = c_uint(0)
+    bytecount = c_uint(0)
+
+    cmdstr = ""
+    cmdlen = c_uint(0)
+    usbbuffer = c_byte * 64
+    cmdstatus = usbbuffer()
+    bufferlen = c_uint(64)
+    cmdresponsestr = ""
+
+    numdevices = mlousb.USBDRVD_GetDevCount(usb_pid)
+    if(numdevices == 0):
         print("No Devices Found.")
         sys.exit(1)
 
+    devicesfound = "Found "+str(numdevices)+" device(s)."
     print(" ")
-    print(f"Found {numdevices} device(s).")
+    print (devicesfound)
     print(" ")
 
-    dev.open(1)
+    devhandle = mlousb.USBDRVD_OpenDevice(devnumber,flagsandattrs,usb_pid)
 
-    v = dev.version()
-    print(v)
+    cmdstr = "ver:?"
+    (cmdtosend,cmdlen) = makecmd(cmdstr)
+    cmdptr = (c_byte * len(cmdtosend))(*cmdtosend)
+
+    bytecount = mlousb.USBDRVD_InterruptWrite(devhandle,writepipe,cmdptr,cmdlen)
+
+    mlousb.USBDRVD_InterruptRead(devhandle,readpipe,cmdstatus,bufferlen)
+    cmdresponsestr = buffer2str(cmdstatus)
+    print(cmdresponsestr)
 
     for port in (0, 1):
-        try:
-            r = dev.retardance(port)
-            print(f"Port {port} retardance: {r}")
-        except D5020Error as e:
-            print(f"Port {port}: {e}")
+        cmdstr = f"port:{port}:retardance:?"
+        (cmdtosend,cmdlen) = makecmd(cmdstr)
+        cmdptr = (c_byte * len(cmdtosend))(*cmdtosend)
+        bytecount = mlousb.USBDRVD_InterruptWrite(devhandle,writepipe,cmdptr,cmdlen)
+        mlousb.USBDRVD_InterruptRead(devhandle,readpipe,cmdstatus,bufferlen)
+        cmdresponsestr = buffer2str(cmdstatus)
+        print(f"Port {port} retardance: {cmdresponsestr}")
 
-    try:
-        t = dev.temperature()
-        print(f"Temperature: {t}")
-    except D5020Error:
-        print("Temperature not available")
-
-    print(" ")
-    print("Setting port 0 to 0.500 ...")
-    try:
-        dev.retardance(0, 0.500)
-        print(f"  Port 0 now: {dev.retardance(0)}")
-    except D5020Error as e:
-        print(f"  Set failed: {e}")
-
-    dev.close()
+    mlousb.USBDRVD_CloseDevice(devhandle)
     print(" ")
