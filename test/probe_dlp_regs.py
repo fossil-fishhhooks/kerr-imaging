@@ -17,6 +17,7 @@ from illumination.dlp import (
     dlp_set_rgb_current_max, dlp_set_rgb_current,
     dlp_write_pattern_config, dlp_write_trigger_out_config,
     dlp_write_input_image_size, dlp_read_pattern_config,
+    dlp_read_validate_exposure_time,
     dlp_enable_external_pattern_streaming,
     dlp_disable_external_pattern_streaming,
     DLP_MODE_EXTERNAL_PATTERN_STREAMING,
@@ -55,9 +56,11 @@ def probe(dev):
     print("  stream_on       - enable External Pattern Streaming (mode 0x04)")
     print("  stream_off      - revert to External Video (mode 0x00)")
     print("  patconfig       - write Pattern Config (96h): 8-bit RGB, 1 pat, all LEDs")
-    print("  patconfig <st> <n> <i> - custom: seq_type, num_pat, illum_sel")
+    print("                    exp=15000µs, pre=171µs, post=31µs")
+    print("  patconfig <st> <n> <il> [exp pre post] - custom (exp/pre/post in µs)")
     print("  patread         - read back Pattern Config (97h)")
-    print("  imgsize [w h]  - write/read Input Image Size (2Eh). default 1920x1080")
+    print("  imgsize [w h]  - write Input Image Size (2Eh). default 1920x1080")
+    print("  validate [exp]  - ReadValidateExposureTime (9Dh). default exp=15000µs")
     print()
     print("Illumination select byte: b0=R, b1=G, b2=B")
     print("  0x01 = red only, 0x02 = green only, 0x04 = blue only")
@@ -130,13 +133,13 @@ def probe(dev):
                 print(f"  WriteExternalVideoSourceFormat(0x{val:02X}) = {ret}")
 
             elif cmd == 'patconfig':
-                if len(parts) >= 4:
-                    st = int(parts[1], 16)
-                    n = int(parts[2])
-                    il = int(parts[3], 16)
-                else:
-                    st, n, il = 0x03, 1, 0x07
-                dlp_write_pattern_config(dev, st, n, il)
+                st = int(parts[1], 16) if len(parts) >= 2 else 0x03
+                n = int(parts[2]) if len(parts) >= 3 else 1
+                il = int(parts[3], 16) if len(parts) >= 4 else 0x07
+                exp = int(parts[4]) if len(parts) >= 5 else 15000
+                pre = int(parts[5]) if len(parts) >= 6 else 171
+                post = int(parts[6]) if len(parts) >= 7 else 31
+                dlp_write_pattern_config(dev, st, n, il, exp, pre, post)
 
             elif cmd == 'stream_on':
                 dlp_enable_external_pattern_streaming(dev)
@@ -158,12 +161,11 @@ def probe(dev):
                 else:
                     w, h = 1920, 1080
                 dlp_write_input_image_size(dev, w, h)
-                # Read back by trying to read opcode 0x2F (Read Input Image Size)
-                ret, data = dlp_read_reg(dev, 0x2F)
-                if ret != 0:
-                    print("  (no readback available)")
-                elif data:
-                    print(f"  ReadInputImageSize = {data.hex()}")
+
+            elif cmd == 'validate':
+                exp = int(parts[1]) if len(parts) >= 2 else 15000
+                dlp_read_validate_exposure_time(dev, pattern_mode=0x00,
+                    bit_depth=0x03, requested_exp_us=exp)
 
             else:
                 print("  unknown command")

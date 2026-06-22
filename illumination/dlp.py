@@ -160,25 +160,71 @@ def dlp_write_input_image_size(dev, width, height, log=print):
 
 
 def dlp_write_pattern_config(dev, seq_type=0x03, num_patterns=1,
-                              illum_sel=0x07, log=print):
-    """Write Pattern Configuration (96h).
+                              illum_sel=0x07, exp_time_us=15000,
+                              pre_dark_us=171, post_dark_us=31,
+                              log=print):
+    """Write Pattern Configuration (96h) — full 15-byte parameter format.
 
-    seq_type: 0x00=1bit mono, 0x01=1bit RGB, 0x02=8bit mono, 0x03=8bit RGB
-    num_patterns: number of patterns in sequence (1 for single-pattern)
-    illum_sel: bitmask b0=R, b1=G, b2=B (e.g. 0x02 = green only, 0x07 = all)
+    Per DLPU081B Rev B §3.4.7:
+      Byte  1: Sequence Type
+      Byte  2: Number of Patterns
+      Byte  3: Illumination Select (b0=R, b1=G, b2=B)
+      Bytes 4-7: Illumination Time (32-bit, µs, LSB first)
+      Bytes 8-11: Pre-Illumination Dark Time (32-bit, µs, LSB first)
+      Bytes 12-15: Post-Illumination Dark Time (32-bit, µs, LSB first)
+
+    External 8-bit RGB timing range (from TI timing table):
+      Exposure: 10912-21824 µs
+      Pre-dark: min 171 µs
+      Post-dark: min 31 µs
     """
     if dev is None or not DLP_AVAILABLE:
         return -1
-    data = bytes([0x96, seq_type, num_patterns, illum_sel])
+    data = bytes([0x96,
+        seq_type,
+        num_patterns,
+        illum_sel,
+        exp_time_us & 0xFF, (exp_time_us >> 8) & 0xFF,
+        (exp_time_us >> 16) & 0xFF, (exp_time_us >> 24) & 0xFF,
+        pre_dark_us & 0xFF, (pre_dark_us >> 8) & 0xFF,
+        (pre_dark_us >> 16) & 0xFF, (pre_dark_us >> 24) & 0xFF,
+        post_dark_us & 0xFF, (post_dark_us >> 8) & 0xFF,
+        (post_dark_us >> 16) & 0xFF, (post_dark_us >> 24) & 0xFF,
+    ])
     return dlp_write_command(dev, data, log=log)
 
 
 def dlp_read_pattern_config(dev, log=print):
-    """Read Pattern Configuration (97h) — returns the current pattern config bytes."""
+    """Read Pattern Configuration (97h) — returns 15 bytes of current config."""
     if dev is None or not DLP_AVAILABLE:
         return -1, b''
-    ret, data = dlp_write_read_command(dev, bytes([0x97]), 9, log=log)
+    ret, data = dlp_write_read_command(dev, bytes([0x97]), 15, log=log)
     return ret, data
+
+
+def dlp_read_validate_exposure_time(dev, pattern_mode=0x00, bit_depth=0x03,
+                                     requested_exp_us=15000, log=print):
+    """Read Validate Exposure Time (9Dh) — check if exposure/dark times are valid.
+
+    pattern_mode: 0x00=External, 0x01=Internal, 0x02=Splash
+    bit_depth: 0x02=8bit mono, 0x03=8bit RGB
+    Returns: (ret, validated_exp_us, min_pre_dark_us, min_post_dark_us)
+    """
+    if dev is None or not DLP_AVAILABLE:
+        return -1, 0, 0, 0
+    write_data = bytes([0x9D, pattern_mode, bit_depth,
+                        requested_exp_us & 0xFF, (requested_exp_us >> 8) & 0xFF,
+                        (requested_exp_us >> 16) & 0xFF, (requested_exp_us >> 24) & 0xFF])
+    ret, data = dlp_write_read_command(dev, write_data, 13, log=log)
+    if ret != 0 or len(data) < 13:
+        return ret, 0, 0, 0
+    support = data[0]
+    exp = data[1] | (data[2] << 8) | (data[3] << 16) | (data[4] << 24)
+    pre = data[5] | (data[6] << 8) | (data[7] << 16) | (data[8] << 24)
+    post = data[9] | (data[10] << 8) | (data[11] << 16) | (data[12] << 24)
+    log(f"ValidateExp: support=0x{support:02X} validated_exp={exp}µs "
+        f"min_pre={pre}µs min_post={post}µs")
+    return ret, exp, pre, post
 
 
 def dlp_write_trigger_out_config(dev, select=0, enable=True, polarity=False,
@@ -224,17 +270,27 @@ def dlp_enable_external_pattern_streaming(dev, log=print):
     is set to white (all LEDs) — color is controlled via WriteRGBCurrentMax.
 
     Command sequence:
-      1. Write Input Image Size (2Eh) — tell controller the frame dimensions
-      2. Write Pattern Configuration (96h) — 8-bit RGB, 1 pat, all LEDs
+      1. Write Input Image Size (2Eh) — incoming frame dimensions
+      2. Write Pattern Configuration (96h) — 8-bit RGB, 1 pat, all LEDs, timing
       3. Configure Trigger Out 1 for camera sync
       4. Switches operating mode to 0x04
+
+    Timing values for external 8-bit RGB (per TI timing table):
+      Exposure: 10912-21824 µs (using 15000 µs)
+      Pre-dark: min 171 µs
+      Post-dark: min 31 µs
+
+    Note: WriteInputImageSize TI doc max is 1280x800 for pattern mode,
+    but EVM firmware may accept 1920x1080. Try 1920x1080 first.
     """
     if dev is None or not DLP_AVAILABLE:
         return -1
     log("--- Enabling External Pattern Streaming mode ---")
     dlp_write_input_image_size(dev, 1920, 1080, log=log)
-    dlp_write_pattern_config(dev, seq_type=0x03, num_patterns=1,
-                              illum_sel=0x07, log=log)
+    dlp_write_pattern_config(dev,
+        seq_type=0x03, num_patterns=1, illum_sel=0x07,
+        exp_time_us=15000, pre_dark_us=171, post_dark_us=31,
+        log=log)
     dlp_write_trigger_out_config(dev, select=0, enable=True,
                                   polarity=False, invert=False,
                                   delay=0, log=log)
