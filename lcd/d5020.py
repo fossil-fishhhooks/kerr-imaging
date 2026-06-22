@@ -4,6 +4,7 @@
 
 import os
 import sys
+import threading
 from ctypes import *
 from ctypes.wintypes import *
 
@@ -67,7 +68,7 @@ class D5020:
     def __exit__(self, *args):
         self.close()
 
-    def _cmd(self, command):
+    def _cmd(self, command, timeout=None):
         if not self.devhandle:
             raise D5020Error("Device not opened")
         (cmdtosend,cmdlen) = makecmd(command)
@@ -75,20 +76,35 @@ class D5020:
         self.mlousb.USBDRVD_InterruptWrite(self.devhandle, c_uint(1), cmdptr, cmdlen)
         usbbuffer = c_byte * 64
         cmdstatus = usbbuffer()
-        self.mlousb.USBDRVD_InterruptRead(self.devhandle, c_uint(0), cmdstatus, c_uint(64))
+        if timeout is None:
+            self.mlousb.USBDRVD_InterruptRead(self.devhandle, c_uint(0), cmdstatus, c_uint(64))
+        else:
+            exc = []
+            def _read():
+                try:
+                    self.mlousb.USBDRVD_InterruptRead(self.devhandle, c_uint(0), cmdstatus, c_uint(64))
+                except Exception as e:
+                    exc.append(e)
+            t = threading.Thread(target=_read, daemon=True)
+            t.start()
+            t.join(timeout)
+            if t.is_alive():
+                raise D5020Error(f"Timeout after {timeout}s: {command}")
+            if exc:
+                raise exc[0]
         return buffer2str(cmdstatus)
 
-    def version(self):
-        return self._cmd("ver:?")
+    def version(self, timeout=None):
+        return self._cmd("ver:?", timeout=timeout)
 
-    def retardance(self, port, value=None):
+    def retardance(self, port, value=None, timeout=2):
         if value is None:
-            raw = self._cmd(f"port:{port}:retardance:?")
+            raw = self._cmd(f"port:{port}:retardance:?", timeout=timeout)
             return self._parse_float(raw)
-        self._cmd(f"port:{port}:retardance:{value}")
+        self._cmd(f"port:{port}:retardance:{value}", timeout=timeout)
 
-    def temperature(self):
-        raw = self._cmd("temp:?")
+    def temperature(self, timeout=None):
+        raw = self._cmd("temp:?", timeout=timeout)
         return self._parse_float(raw)
 
     @staticmethod
