@@ -16,9 +16,9 @@ def probe(dev, port, label, values):
             dev.retardance(port, v)
             time.sleep(0.05)
             actual = dev.retardance(port)
-            print(f"    set {v:>6.3f}  →  read {actual:.3f}  {'✓' if abs(actual - v) < 0.01 else '⚠ clamped'}")
+            print(f"    set {v:>6.3f}  ->  read {actual:.3f}  {'OK' if abs(actual - v) < 0.01 else '! clamped'}")
         except D5020Error as e:
-            print(f"    set {v:>6.3f}  →  ERROR: {e}")
+            print(f"    set {v:>6.3f} ->  ERROR: {e}")
 
 
 if __name__ == "__main__":
@@ -59,7 +59,7 @@ if __name__ == "__main__":
             dev.retardance(port, v)
             time.sleep(0.05)
             a = dev.retardance(port)
-            print(f"    set {v:.3f}  →  read {a:.3f}")
+            print(f"    set {v:.3f}  ->  read {a:.3f}")
         # restore
         dev.retardance(port, 0)
 
