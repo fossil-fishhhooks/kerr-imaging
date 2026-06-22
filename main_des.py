@@ -13,6 +13,7 @@ from illumination import IPG
 from illumination.dlp import (
     DLP_AVAILABLE, dlp_open, dlp_close, DLPDevice, dlp_set_rgb_current_max, COLOR_RGB,
     dlp_enable_external_pattern_streaming, dlp_disable_external_pattern_streaming,
+    dlp_update_exposure_time,
 )
 from piezo.panel import PiezoPanel
 from lcvr.panel import LCDPanel
@@ -239,7 +240,11 @@ class FramebufferWindow(QMainWindow):
         try:
             val_ms = self.exposure_spin.value()
             cam.set_exposure(val_ms / 1000)
-            self.logtext += f"\n[INFO] Exposure set to {val_ms} ms"
+            self.logtext += f"\n[INFO] Camera exposure set to {val_ms} ms"
+            val_us = int(val_ms * 1000)
+            if self._pattern_streaming_active and self.dlp_device is not None:
+                dlp_update_exposure_time(self.dlp_device, val_us, log=self._log_dlp)
+                self.logtext += f"\n[DLP] Pattern exposure set to {val_us} µs"
         except Exception as e:
             self.logtext += f"\n[ERROR] Set exposure failed: {e}"
         self.log.setText(self.logtext)

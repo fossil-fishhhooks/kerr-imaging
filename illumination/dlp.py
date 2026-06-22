@@ -296,9 +296,29 @@ def dlp_enable_external_pattern_streaming(dev, log=print):
         log=log)
     dlp_write_trigger_out_config(dev, select=0, enable=True,
                                   polarity=False, invert=False,
-                                  delay=0, log=log)
+                                  delay=171, log=log)
     ret = dlp_set_operate_mode(dev, DLP_MODE_EXTERNAL_PATTERN_STREAMING, log=log)
     log(f"External Pattern Streaming enabled (ret={ret})")
+    return ret
+
+
+def dlp_update_exposure_time(dev, exposure_us, log=print):
+    """Update the pattern illumination time while in External Pattern Streaming mode.
+
+    Writes a new PatternConfiguration with the updated exposure time, then
+    re-applies the operating mode to latch the new settings.
+
+    Pre-dark and post-dark times are kept at their previous values (171/31 µs).
+    """
+    if dev is None or not DLP_AVAILABLE:
+        return -1
+    log(f"--- Updating DLP exposure to {exposure_us} µs ---")
+    dlp_write_pattern_config(dev,
+        seq_type=0x00, num_patterns=1, illum_sel=0x07,
+        exp_time_us=exposure_us, pre_dark_us=171, post_dark_us=31,
+        log=log)
+    ret = dlp_set_operate_mode(dev, DLP_MODE_EXTERNAL_PATTERN_STREAMING, log=log)
+    log(f"Exposure time updated (ret={ret})")
     return ret
 
 
