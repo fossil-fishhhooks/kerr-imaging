@@ -118,20 +118,32 @@ class D5020:
 
 
 if __name__ == "__main__":
+    import traceback
     dll = r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd"
+    print(f"DLL: {dll}")
     dev = D5020(dll_path=dll)
+    print(f"mlousb: {dev.mlousb}")
     n = dev.device_count()
+    print(f"device_count: {n}")
     if n == 0:
         print("No Devices Found.")
         sys.exit(1)
-    print(f"\nFound {n} device(s).\n")
+    print("Opening device 1...")
     dev.open(1)
-    print(f"Version: {dev.version(timeout=5)}\n")
+    print(f"devhandle: {dev.devhandle}")
+    print("Calling version (timeout=5)...")
+    try:
+        v = dev.version(timeout=5)
+        print(f"Version: {v}")
+    except D5020Error as e:
+        print(f"Version ERROR: {e}")
     for port in (0, 1):
+        print(f"Calling retardance port {port} (timeout=3)...")
         try:
             val = dev.retardance(port, timeout=3)
             print(f"Port {port} retardance: {val}")
         except D5020Error as e:
             print(f"Port {port} ERROR: {e}")
+    print("Closing...")
     dev.close()
-    print("")
+    print("Done")
