@@ -102,8 +102,10 @@ def dlp_write_command(dev, data, log=print):
     """Write raw bytes over I2C to the DLPC3479 (address 0x1B)."""
     if dev is None or not DLP_AVAILABLE:
         return -1
+    _dll.SetI2CBusAccess(dev, True)
     tc = ctypes.c_int(0)
     ret = _dll.WriteCommand(dev, data, len(data), ctypes.byref(tc))
+    _dll.SetI2CBusAccess(dev, False)
     log(f"WriteCommand({data.hex()}) = {ret}, transferred={tc.value}")
     return ret
 
@@ -112,10 +114,12 @@ def dlp_write_read_command(dev, write_data, read_len, log=print):
     """Write then read from the DLPC3479 I2C bus."""
     if dev is None or not DLP_AVAILABLE:
         return -1
+    _dll.SetI2CBusAccess(dev, True)
     tc = ctypes.c_int(0)
     read_buf = ctypes.create_string_buffer(read_len)
     ret = _dll.WriteReadCommand(dev, write_data, len(write_data),
                                 ctypes.byref(tc), read_len, read_buf)
+    _dll.SetI2CBusAccess(dev, False)
     log(f"WriteReadCommand({write_data.hex()}) = {ret}, read={read_buf.raw[:read_len].hex()}")
     return ret, read_buf.raw[:read_len]
 
