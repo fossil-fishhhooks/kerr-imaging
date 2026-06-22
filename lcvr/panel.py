@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QSlider, QDoubleSpinBox
 )
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from .d5020 import D5020, D5020Error
 
 
@@ -19,10 +19,14 @@ class LCDPanel(QGroupBox):
         self._status_label = status_label
         self._device = None
         self._connected = False
+        self._debounce = QTimer()
+        self._debounce.setSingleShot(True)
+        self._debounce.timeout.connect(self._do_readback)
+        self._pending_port = None
         self._build_ui()
 
     def _log_msg(self, msg):
-        self._log(f"\n[LCD] {msg}")
+        self._log(f"\n[LCVR] {msg}")
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -82,8 +86,25 @@ class LCDPanel(QGroupBox):
         if self._connected and self._device:
             try:
                 self._device.retardance(port, val)
+                self._pending_port = port
+                self._debounce.start(200)
             except Exception as e:
                 self._log_msg(f"Port {port} set failed: {e}")
+
+    def _do_readback(self):
+        port = self._pending_port
+        if port is None or not self._connected or not self._device:
+            return
+        try:
+            actual = self._device.retardance(port)
+            self._spins[port].blockSignals(True)
+            self._sliders[port].blockSignals(True)
+            self._spins[port].setValue(round(actual, 3))
+            self._sliders[port].setValue(int(round(actual * 1000)))
+            self._spins[port].blockSignals(False)
+            self._sliders[port].blockSignals(False)
+        except Exception:
+            pass
 
     def _toggle_connect(self):
         if self._connected:
@@ -115,13 +136,13 @@ class LCDPanel(QGroupBox):
             if self._status_label:
                 self._status_label.setText("LCVR: Connected")
             self._connected_changed.emit(True)
-            self._log_msg("LCD connected")
+            self._log_msg("LCVR connected")
         except D5020Error as e:
-            self._log_msg(f"LCD connection failed: {e}")
+            self._log_msg(f"LCVR connection failed: {e}")
             self._status.setText("Failed")
             self._status.setStyleSheet("color: red")
         except Exception as e:
-            self._log_msg(f"LCD connection error: {e}")
+            self._log_msg(f"LCVR connection error: {e}")
             self._status.setText("Failed")
             self._status.setStyleSheet("color: red")
 
@@ -140,4 +161,4 @@ class LCDPanel(QGroupBox):
         if self._status_label:
             self._status_label.setText("LCVR: Disconnected")
         self._connected_changed.emit(False)
-        self._log_msg("LCD disconnected")
+        self._log_msg("LCVR disconnected")
