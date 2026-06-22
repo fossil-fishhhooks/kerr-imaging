@@ -6,7 +6,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from lcd.d5020 import D5020, D5020Error
+from lcvr.d5020 import D5020, D5020Error
 
 
 def try_query(dev, port, timeout=2):

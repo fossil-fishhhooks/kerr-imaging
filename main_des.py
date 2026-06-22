@@ -12,7 +12,7 @@ from PyQt5 import uic
 from illumination import IPG
 from illumination.dlp import DLP_AVAILABLE, dlp_open, dlp_close, DLPDevice
 from piezo.panel import PiezoPanel
-from lcd.panel import LCDPanel
+from lcvr.panel import LCDPanel
 import os
 
 
@@ -135,7 +135,7 @@ class FramebufferWindow(QMainWindow):
         self.binning_widget = QLabel("Binning: --")
         self.ipg_status_widget = QLabel("IPG: Disconnected")
         self.piezo_status_widget = QLabel("Piezo: Disconnected")
-        self.lcd_status_widget = QLabel("LCD: Disconnected")
+        self.lcd_status_widget = QLabel("LCVR: Disconnected")
 
         toolbar.addWidget(self.cam_status_widget)
         toolbar.addWidget(self.fps_widget)

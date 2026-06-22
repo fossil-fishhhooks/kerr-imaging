@@ -14,7 +14,7 @@ class LCDPanel(QGroupBox):
     _connected_changed = pyqtSignal(bool)
 
     def __init__(self, log_callback=None, status_label=None, parent=None):
-        super().__init__("LCD Retardance", parent)
+        super().__init__("LCVR Retardance", parent)
         self._log = log_callback or (lambda msg: None)
         self._status_label = status_label
         self._device = None
@@ -45,16 +45,15 @@ class LCDPanel(QGroupBox):
             lbl.setFixedWidth(42)
             lbl.setStyleSheet("font-weight: bold")
             sld = QSlider(Qt.Horizontal)
-            sld.setRange(0, 1000)
+            sld.setRange(0, 750)
             sld.setValue(0)
             spn = QDoubleSpinBox()
-            spn.setRange(0, 10)
-            spn.setDecimals(2)
-            spn.setSingleStep(0.1)
+            spn.setRange(0, 0.75)
+            spn.setDecimals(3)
+            spn.setSingleStep(0.01)
             spn.setValue(0)
-            spn.setFixedWidth(72)
 
-            sld.valueChanged.connect(lambda v, s=spn: self._slider_to_spin(s, v / 100))
+            sld.valueChanged.connect(lambda v, s=spn: self._slider_to_spin(s, v / 1000))
             spn.valueChanged.connect(lambda v, p=port: self._spin_changed(p, v))
 
             row.addWidget(lbl)
@@ -78,7 +77,7 @@ class LCDPanel(QGroupBox):
 
     def _spin_changed(self, port, val):
         self._sliders[port].blockSignals(True)
-        self._sliders[port].setValue(int(val * 100))
+        self._sliders[port].setValue(int(round(val * 1000)))
         self._sliders[port].blockSignals(False)
         if self._connected and self._device:
             try:
@@ -107,14 +106,14 @@ class LCDPanel(QGroupBox):
                     v = dev.retardance(port)
                     self._spins[port].blockSignals(True)
                     self._sliders[port].blockSignals(True)
-                    self._spins[port].setValue(round(v, 2))
-                    self._sliders[port].setValue(int(v * 100))
+                    self._spins[port].setValue(round(v, 3))
+                    self._sliders[port].setValue(int(round(v * 1000)))
                     self._spins[port].blockSignals(False)
                     self._sliders[port].blockSignals(False)
                 except Exception:
                     pass
             if self._status_label:
-                self._status_label.setText("LCD: Connected")
+                self._status_label.setText("LCVR: Connected")
             self._connected_changed.emit(True)
             self._log_msg("LCD connected")
         except D5020Error as e:
@@ -139,6 +138,6 @@ class LCDPanel(QGroupBox):
         self._status.setStyleSheet("color: gray")
         self._set_enabled(False)
         if self._status_label:
-            self._status_label.setText("LCD: Disconnected")
+            self._status_label.setText("LCVR: Disconnected")
         self._connected_changed.emit(False)
         self._log_msg("LCD disconnected")
