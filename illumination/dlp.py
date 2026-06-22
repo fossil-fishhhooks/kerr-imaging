@@ -266,7 +266,7 @@ def dlp_set_operate_mode(dev, mode, log=print):
 
 
 def dlp_enable_external_pattern_streaming(dev, log=print):
-    """Switch to External Pattern Streaming mode (0x04).
+    """Switch to External Pattern Streaming mode (0x03).
 
     The DLPC3479 captures each incoming HDMI frame as a pattern, bypassing
     the DMD's sequential R→G→B color subframe processing. LED illumination
@@ -274,14 +274,14 @@ def dlp_enable_external_pattern_streaming(dev, log=print):
 
     Command sequence:
       1. Write Input Image Size (2Eh) — incoming frame dimensions
-      2. Write Pattern Configuration (96h) — 8-bit RGB, 1 pat, all LEDs, timing
+      2. Write Pattern Configuration (96h) — 1-bit mono, 1 pat, all LEDs, timing
       3. Configure Trigger Out 1 for camera sync
-      4. Switches operating mode to 0x04
+      4. Switches operating mode to 0x03
 
-    Timing values for external 8-bit RGB (per TI timing table):
-      Exposure: 10912-21824 µs (using 15000 µs)
-      Pre-dark: min 171 µs
-      Post-dark: min 31 µs
+    Timing values for external 1-bit mono:
+      Exposure: 15000 µs
+      Pre-dark: 171 µs
+      Post-dark: 31 µs
 
     Note: WriteInputImageSize TI doc max is 1280x800 for pattern mode,
     but EVM firmware may accept 1920x1080. Try 1920x1080 first.
@@ -291,7 +291,7 @@ def dlp_enable_external_pattern_streaming(dev, log=print):
     log("--- Enabling External Pattern Streaming mode ---")
     dlp_write_input_image_size(dev, 1920, 1080, log=log)
     dlp_write_pattern_config(dev,
-        seq_type=0x03, num_patterns=1, illum_sel=0x07,
+        seq_type=0x00, num_patterns=1, illum_sel=0x07,
         exp_time_us=15000, pre_dark_us=171, post_dark_us=31,
         log=log)
     dlp_write_trigger_out_config(dev, select=0, enable=True,
