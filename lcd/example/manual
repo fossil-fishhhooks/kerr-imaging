@@ -1,0 +1,239 @@
+off:n Turns the specified channel off. n = LC channel (1,2)
+inv:n,v1 Sets up the specified channel to
+output an invariant voltage v1.
+n = LC channel (1,2)
+v1 = 0-10000 (millivolts)*
+sin:n,v1,v2,t,ph<CR>
+Sets up the specified channel to
+output a sine wave varying
+between v1 and v2, with period t
+and phase ph.
+n = LC channel (1,2)
+v1,v2 = 0-10000 (millivolts)*
+t  = 5-65535 milliseconds
+ph = 0-360 (degrees)
+saw:n,v1,v2,t,ph<CR>
+Sets up the specified channel to
+output a sawtooth wave varying
+between v1 and v2, with period t
+and phase ph.
+n = LC channel (1,2)
+v1,v2 = 0-10000 (millivolts)*
+t  = 5-65535 milliseconds
+ph = 0-360 (degrees)
+tri:n,v1,v2,t,ph<CR>
+Sets up the specified channel to
+output a triangle wave varying
+between v1 and v2, with period t
+and phase ph.
+n = LC channel (1,2)
+v1,v2 = 0-10000 (millivolts)*
+t  = 5-65535 milliseconds
+ph = 0-360 (degrees)
+sqr:n,v1,v2,t,ph,dc<CR>
+Sets up the specified channel to
+output a square wave varying
+between v1 and v2, with period t,
+phase ph, and duty cycle dc.
+n = LC channel (1,2)
+v1,v2 = 0-10000 (millivolts)*
+t  = 5-65535 milliseconds
+ph = 0-360 (degrees)
+dc = 0-100 (percent)
+tnew:n,v1,v2,t,ph,dc,tv,tt
+<CR>
+Sets up the specified channel to
+output a square wave varying
+between v1 and v2, with period t,
+phase ph, duty cycle dc, with
+pulses to TNE voltage tv, and of
+duration TNE time tt.
+n = LC channel (1,2)
+v1,v2 = 0-10000 (millivolts)*
+t  = 5-65535 milliseconds
+ph = 0-360 (degrees)
+dc =  0-100 (percent)
+tv = 0-10000 (millivolts)
+tt = 0-255 (milliseconds)
+ext:n<CR>
+Enables output channels to be
+driven by signal applied to front
+panel I/O connector.
+
+n =channel (1,2)
+
+thr:n,v1,v2<CR>
+I/O connector n is monitored, and
+if less than 2.5V, output = V1.
+Otherwise, output is V2.
+n = channel (1,2)
+v1,v2 = 0-10000 (millivolts)*
+trg:n,?<CR>
+I/O connector n is monitored for
+pulses.  When a pulse is received,
+if the output is at V1, it switches
+to V2.  If the output is at V2, it
+switches to V1.
+n = channel (1,2)
+v1,v2 = 0-10000 (millivolts)*
+wvf:n,?<CR>
+Returns the current waveform
+configuration.  All parameters are
+returned regardless of waveform.
+Some parameters will be
+undefined for some waveforms.
+Waveform parameter to
+waveform conversion:
+1 = invariant/off     2 = triangle
+3 = sawtooth          4 = square
+5 = TNE                 6 = sine
+7 = external in        8 = threshold
+9 = trigger.
+Controller returns 9 parameters:
+n = LC channel (1,2)
+m = waveform (1-9)
+v1,v2 = 0-10000 (millivolts)*
+t  = 5-65535 (milliseconds)
+ph = 0-360 (degrees)
+dc =  0-100 (percent)
+tv = 0-10000 (millivolts)
+tt = 0-255 (milliseconds)
+*- If the unit has the 20V option, the voltage becomes 20000mV.
+D5020 Digital Controller
+User Manual, rev. 1.04
+21
+
+
+
+Table 3 – Temperature-Related ASCII commands for the D5020 controller
+Firmware Command Description Notes
+tmp:n,?<CR>
+Query current temperature of
+temperature controlled LC on
+channel n.
+Controller returns 16-bit integer i
+converted to temperature by
+T (ºC) = (i*500/65535) - 273.15
+tsp:n,t<CR> Sets temperature setpoint for
+temperature control for channel n
+n = channel (1,2)
+t is 16-bit integer
+tsp:n,?<CR> Query current temperature
+setpoint for channel n. Controller returns 16-bit integer (t)
+
+
+
+Table 4 – Other ASCII commands for the D5020 controller
+Firmware Command Description Notes
+sync:n,ph,t<CR>
+Produces sync pulses (high-low)
+on front panel I/O connector
+specified by n, with phase ph, and
+time t.  This command will be
+ignored if waveform is set to
+external in, threshold or trigger,
+as the I/O connector is already in
+use for these waveforms.
+n =channel (1,2)
+ph = phase relative to waveform
+(degrees)
+t  = pulse length (microseconds)
+tmp:n,?<CR>
+Query current temperature of
+temperature controlled LC on
+channel n.
+Controller returns 16-bit integer i
+converted to temperature by
+T (ºC) = (i*500/65535) - 273.15
+tsp:n,t<CR> Sets temperature setpoint for
+temperature control for channel n
+n = channel (1,2)
+t is 16-bit integer
+tsp:n,?<CR> Query current temperature
+setpoint for channel n. Controller returns 16-bit integer (t)
+rsn:?<CR> Query controller’s serial number Controller returns serial number
+string.
+ver:?<CR> Query firmware version. Controller returns firmware version
+and copyright string
+
+D5020 Digital Controller
+User Manual, rev. 1.04
+22
+Table 5 – Legacy ASCII commands for the D5020 Controller and conversions from
+D3050 code.
+Firmware
+Command Description Notes Conversion required
+from D3050 code
+ld:n,v<CR>
+Sets up the specified
+channel to output voltage
+v.
+n = LC channel (1,2)
+v = 0-10000 (millivolts)*
+Take voltages in counts
+and divide by 6.5535.
+ld:n,? <CR> Query the voltage setting
+on the specified channel.
+If an ldd or ld command was
+not sent prior to querying
+the controller, the output of
+this command will be
+undefined.
+If needed, convert
+voltages to count by
+multiplying by 6.5535.
+ldd:v1,v2
+<CR>
+Sets channel 1’s output to
+v1 and channel 2’s output
+to v2.
+v1,v2 = 0-10000
+(millivolts)*
+Take voltages in counts
+and divide by 6.5535.
+Only two channels
+available.
+ldd:? <CR> Query the voltage on both
+channels.
+If an ldd or ld command was
+not sent prior to querying
+the controller, the output of
+this command will be
+undefined.
+If needed, convert
+voltages to counts by
+multiplying by 6.5535.
+Only two channels are
+available.
+ldx:i1i2<CR>
+Works the same as ldd,
+but i1 and i2
+ are the
+voltages in hexadecimal.
+i1,i2  = 0x0000 – 0xFFFF
+(hexadecimal)*
+Convert to decimal,
+divide result by 6.5535
+and convert to
+hexadecimal.
+tne:n,t.v<CR>
+Sets up the specified
+channel to perform TNE
+switching with a TNE
+pulse of duration t at
+voltage v.
+n = LC channel (1,2)
+t = 0-255 (milliseconds)
+v = 0-10000 (millivolts)*
+Useful only with ld, ldd and
+ldx commands.
+Take voltages in counts
+and divide by 6.5535.
+tne:n,?
+Query the TNE
+configuration for the
+specified channel.
+n = LC channel (1,2)
+If needed, convert
+voltages to counts by
+multiplying by 6.5535 
