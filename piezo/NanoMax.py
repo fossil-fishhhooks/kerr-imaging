@@ -44,12 +44,17 @@ class NanoMax_MDT693B:
 
     def _read_response(self):
         raw = b""
-        self._ser.timeout = 0.05
-        while True:
+        gap = 0
+        self._ser.timeout = 0.01
+        while gap < 15:
             b = self._ser.read(1)
             if not b:
-                break
+                gap += 1
+                continue
             raw += b
+            gap = 0
+            if b == b">":
+                break
         self._ser.timeout = 0.5
         text = raw.decode("utf-8", errors="replace")
         lines = [l.strip() for l in text.split("\r") if l.strip()]
