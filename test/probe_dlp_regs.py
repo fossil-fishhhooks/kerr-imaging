@@ -15,6 +15,10 @@ from illumination.dlp import (
     DLP_AVAILABLE, dlp_open, dlp_close, dlp_read_operate_mode,
     dlp_write_command, dlp_read_reg, dlp_write_reg,
     dlp_set_rgb_current_max, dlp_set_rgb_current,
+    dlp_write_pattern_config, dlp_write_trigger_out_config,
+    dlp_enable_external_pattern_streaming,
+    dlp_disable_external_pattern_streaming,
+    DLP_MODE_EXTERNAL_PATTERN_STREAMING,
     COLOR_RGB,
 )
 
@@ -41,27 +45,20 @@ def probe(dev):
     print()
     print("=== Suggested experiments ===")
     print()
-    print("1) REG[0x0C] bit 0 might control sequential vs simultaneous LED mode.")
-    print("   Try: w 0C 01   (enable simultaneous mode)")
-    print("   Try: w 0C 00   (back to sequential)")
+    print("=== EXTERNAL PATTERN STREAMING (fixes DMD color-subframe flicker) ===")
     print()
-    print("2) REG[0x0B] controls LED PWM period. Lower value = higher frequency.")
-    print("   Current 0x0B value sets PWM freq. Try halving it:")
-    print("     w 0B <current/2>   (e.g., if 0x0B=0xFF, try 0x80)")
+    print("Mode 0x04 = External Pattern Streaming: bypasses DMD R/G/B subframe")
+    print("cycling. Each incoming HDMI frame is treated as a single pattern with")
+    print("the LED illumination selected in Pattern Config (96h).")
     print()
-    print("3) REG[0x0D] might enable/disable individual LEDs (bitmask).")
-    print("   w 0D 04   (enable green only)")
-    print("   w 0D 07   (all LEDs on)")
+    print("  stream_on       - enable External Pattern Streaming (mode 0x04)")
+    print("  stream_off      - revert to External Video (mode 0x00)")
+    print("  patconfig       - write Pattern Config (96h): 8-bit RGB, 1 pat, all LEDs")
+    print("  patconfig <st> <n> <i> - custom: seq_type, num_pat, illum_sel")
     print()
-    print("4) Try different WriteOperateMode values:")
-    print("     mode 00   current mode (normal)")
-    print("     mode 01   ? internal pattern?")
-    print("     mode 10   ?")
-    print()
-    print("5) Try different video source formats:")
-    print("     format 43   current (24-bit RGB via HDMI)")
-    print("     format 00   ? internal test pattern?")
-    print("     format 01   ?")
+    print("Illumination select byte: b0=R, b1=G, b2=B")
+    print("  0x01 = red only, 0x02 = green only, 0x04 = blue only")
+    print("  0x07 = all LEDs")
     print()
     print("=== Interactive register writer ===")
     print("Commands:")
@@ -128,6 +125,21 @@ def probe(dev):
                 val = int(parts[1], 16)
                 ret = _dll.WriteExternalVideoSourceFormat(dev, ctypes.c_uint8(val))
                 print(f"  WriteExternalVideoSourceFormat(0x{val:02X}) = {ret}")
+
+            elif cmd == 'patconfig':
+                if len(parts) >= 4:
+                    st = int(parts[1], 16)
+                    n = int(parts[2])
+                    il = int(parts[3], 16)
+                else:
+                    st, n, il = 0x03, 1, 0x07
+                dlp_write_pattern_config(dev, st, n, il)
+
+            elif cmd == 'stream_on':
+                dlp_enable_external_pattern_streaming(dev)
+
+            elif cmd == 'stream_off':
+                dlp_disable_external_pattern_streaming(dev)
 
             else:
                 print("  unknown command")

@@ -41,6 +41,9 @@ try:
     _dll.WriteReadCommand.restype = ctypes.c_int
     _dll.ReadOperateMode.argtypes = [DLPDevice, ctypes.POINTER(ctypes.c_uint8)]
     _dll.ReadOperateMode.restype = ctypes.c_int
+    _dll.WriteTriggerOut.argtypes = [DLPDevice, ctypes.c_bool, ctypes.c_bool,
+                                      ctypes.c_bool, ctypes.c_bool, ctypes.c_uint32]
+    _dll.WriteTriggerOut.restype = ctypes.c_int
     DLP_AVAILABLE = True
 except Exception:
     pass
@@ -142,6 +145,93 @@ def dlp_write_reg(dev, reg, val, log=print):
 def dlp_read_reg(dev, reg, log=print):
     """Read a single DLPC3479 register (write reg address, read 1 byte back)."""
     return dlp_write_read_command(dev, bytes([reg]), 1, log=log)
+
+
+def dlp_write_pattern_config(dev, seq_type=0x03, num_patterns=1,
+                              illum_sel=0x07, log=print):
+    """Write Pattern Configuration (96h).
+
+    seq_type: 0x00=1bit mono, 0x01=1bit RGB, 0x02=8bit mono, 0x03=8bit RGB
+    num_patterns: number of patterns in sequence (1 for single-pattern)
+    illum_sel: bitmask b0=R, b1=G, b2=B (e.g. 0x02 = green only, 0x07 = all)
+    """
+    if dev is None or not DLP_AVAILABLE:
+        return -1
+    data = bytes([0x96, seq_type, num_patterns, illum_sel])
+    return dlp_write_command(dev, data, log=log)
+
+
+def dlp_write_trigger_out_config(dev, select=0, enable=True, polarity=False,
+                                  invert=False, delay=0, log=print):
+    """Configure Trigger Out signal via the DLL's WriteTriggerOut.
+
+    select: 0=TRIG_OUT_1, 1=TRIG_OUT_2
+    enable: True to enable trigger output
+    polarity: output polarity
+    invert: invert signal
+    delay: delay in microseconds
+    """
+    if dev is None or not DLP_AVAILABLE:
+        return -1
+    ret = _dll.WriteTriggerOut(dev, ctypes.c_bool(select), ctypes.c_bool(enable),
+                                ctypes.c_bool(polarity), ctypes.c_bool(invert),
+                                ctypes.c_uint32(delay))
+    log(f"WriteTriggerOut(sel={select}, en={enable}, pol={polarity}, "
+        f"inv={invert}, delay={delay}) = {ret}")
+    return ret
+
+
+DLP_MODE_EXTERNAL_VIDEO = 0x00
+DLP_MODE_EXTERNAL_PATTERN_STREAMING = 0x04
+DLP_MODE_INTERNAL_PATTERN_STREAMING = 0x05
+DLP_MODE_STANDBY = 0xFF
+
+
+def dlp_set_operate_mode(dev, mode, log=print):
+    """Set DLP operating mode via the DLL's WriteOperateMode."""
+    if dev is None or not DLP_AVAILABLE:
+        return -1
+    ret = _dll.WriteOperateMode(dev, ctypes.c_uint8(mode))
+    log(f"WriteOperateMode(0x{mode:02X}) = {ret}")
+    return ret
+
+
+def dlp_enable_external_pattern_streaming(dev, log=print):
+    """Switch to External Pattern Streaming mode (0x04).
+
+    Prerequisites (done at dlp_open):
+      - External source configured and locked (HDMI via RPi)
+      - WriteExternalVideoSourceFormat + WriteDisplaySize already set
+
+    This function:
+      1. Writes Pattern Configuration (8-bit RGB, 1 pattern, all LEDs)
+      2. Configures Trigger Out 1 for camera sync
+      3. Switches operating mode to 0x04
+    """
+    if dev is None or not DLP_AVAILABLE:
+        return -1
+    log("--- Enabling External Pattern Streaming mode ---")
+    dlp_write_pattern_config(dev, seq_type=0x03, num_patterns=1,
+                              illum_sel=0x07, log=log)
+    dlp_write_trigger_out_config(dev, select=0, enable=True,
+                                  polarity=False, invert=False,
+                                  delay=0, log=log)
+    ret = dlp_set_operate_mode(dev, DLP_MODE_EXTERNAL_PATTERN_STREAMING, log=log)
+    log(f"External Pattern Streaming enabled (ret={ret})")
+    return ret
+
+
+def dlp_disable_external_pattern_streaming(dev, log=print):
+    """Revert to External Video Port mode (0x00)."""
+    if dev is None or not DLP_AVAILABLE:
+        return -1
+    log("--- Disabling External Pattern Streaming ---")
+    _dll.WriteTriggerOut(dev, ctypes.c_bool(0), ctypes.c_bool(False),
+                          ctypes.c_bool(False), ctypes.c_bool(False),
+                          ctypes.c_uint32(0))
+    ret = dlp_set_operate_mode(dev, DLP_MODE_EXTERNAL_VIDEO, log=log)
+    log(f"Back to External Video mode (ret={ret})")
+    return ret
 
 
 COLOR_MAP = {"Red": 16711680, "Green": 65280, "Blue": 255}

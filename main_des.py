@@ -10,7 +10,10 @@ from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap, QFont
 from PyQt5 import uic
 from illumination import IPG
-from illumination.dlp import DLP_AVAILABLE, dlp_open, dlp_close, DLPDevice, dlp_set_rgb_current_max, COLOR_RGB
+from illumination.dlp import (
+    DLP_AVAILABLE, dlp_open, dlp_close, DLPDevice, dlp_set_rgb_current_max, COLOR_RGB,
+    dlp_enable_external_pattern_streaming, dlp_disable_external_pattern_streaming,
+)
 from piezo.panel import PiezoPanel
 from lcvr.panel import LCDPanel
 import os
@@ -122,6 +125,14 @@ class FramebufferWindow(QMainWindow):
         self.arc_set_button.clicked.connect(self.send_arc)
         self.ipg_sleep_button.clicked.connect(self.sleep_ipg)
         self.color_combo.currentTextChanged.connect(self._apply_dlp_color)
+
+        # Pattern Streaming toggle button in the Light Control group
+        self.stream_btn = QPushButton("Pattern: OFF", self.light_group)
+        self.stream_btn.setGeometry(240, 140, 131, 23)
+        self.stream_btn.setEnabled(False)
+        self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
+        self.stream_btn.clicked.connect(self._toggle_pattern_streaming)
+        self._pattern_streaming_active = False
 
         # Top toolbar (acts as status bar)
         toolbar = QToolBar()
@@ -285,6 +296,7 @@ class FramebufferWindow(QMainWindow):
                 self.dlp_device = dlp_open()
                 self.logtext += "\n[DLP] DLP initialized"
                 self._apply_dlp_color()
+                self.stream_btn.setEnabled(True)
             else:
                 self.logtext += "\n[DLP] DLP not available (Linux or missing DLL)"
         except Exception as e:
@@ -328,14 +340,36 @@ class FramebufferWindow(QMainWindow):
         self.log.setText(self.logtext)
 
 
+    def _toggle_pattern_streaming(self):
+        if not self.dlp_device:
+            return
+        if not self._pattern_streaming_active:
+            dlp_enable_external_pattern_streaming(self.dlp_device, log=self._log_dlp)
+            self._pattern_streaming_active = True
+            self.stream_btn.setText("Pattern: ON")
+            self.stream_btn.setStyleSheet("background-color: #2a6; color: #fff;")
+            self.logtext += "\n[DLP] External Pattern Streaming ACTIVE"
+        else:
+            dlp_disable_external_pattern_streaming(self.dlp_device, log=self._log_dlp)
+            self._pattern_streaming_active = False
+            self.stream_btn.setText("Pattern: OFF")
+            self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
+            self.logtext += "\n[DLP] Back to External Video mode"
+        self.log.setText(self.logtext)
+
+
     def sleep_ipg(self):
         try:
             if self.ipg_port:
                 IPG.send_message(self.ipg_port, "quit\r")
                 self.logtext += "\n[IPG] Sent quit command"
 
+            self._pattern_streaming_active = False
             dlp_close(self.dlp_device)
             self.dlp_device = None
+            self.stream_btn.setEnabled(False)
+            self.stream_btn.setText("Pattern: OFF")
+            self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
 
             self.ipg_port = None
             self.ipg_status_label.setText("Disconnected")
