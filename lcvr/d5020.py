@@ -147,8 +147,6 @@ class D5020:
     def open(self, dev_number=1):
         if self.devhandle is not None:
             return
-        if self.device_count() == 0:
-            raise D5020Error("No Devices Found.")
         self.devhandle = self.mlousb.USBDRVD_OpenDevice(c_uint(dev_number), self.flagsandattrs, self.usb_pid)
 
     def close(self):
@@ -223,15 +221,38 @@ class D5020:
 
 
 if __name__ == "__main__":
+    # Use the same proven pattern as D5020Example.py
     dll = r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd"
-    dev = D5020(dll_path=dll)
-    n = dev.device_count()
+    mlousb = WinDLL(dll)
+    mlousb.USBDRVD_OpenDevice.restype = HANDLE
+    mlousb.USBDRVD_InterruptWrite.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
+    mlousb.USBDRVD_InterruptRead.argtypes = [HANDLE, c_uint, POINTER(c_byte), c_uint]
+    mlousb.USBDRVD_CloseDevice.argtypes = [HANDLE]
+
+    usb_pid = c_uint(5020)
+    flagsandattrs = c_uint(1073741824)
+    writepipe = c_uint(1)
+    readpipe = c_uint(0)
+    bufferlen = c_uint(64)
+
+    n = mlousb.USBDRVD_GetDevCount(usb_pid)
     if n == 0:
         print("No Devices Found.")
         sys.exit(1)
     print(f"Found {n} device(s).\n")
 
-    dev.open(1)
+    devhandle = mlousb.USBDRVD_OpenDevice(c_uint(1), flagsandattrs, usb_pid)
+    print("Device opened.")
+
+    # wrap in class API so we get calibration-aware retardance
+    dev = D5020.__new__(D5020)
+    dev.mlousb = mlousb
+    dev.devhandle = devhandle
+    dev.usb_pid = usb_pid
+    dev.flagsandattrs = flagsandattrs
+    dev.set_calibration(DEFAULT_CALIBRATION)
+
+    # test version
     print(f"  Version: {dev.version(timeout=5)}")
     print(f"  Serial: {dev.serial_number(timeout=5)}")
 
@@ -255,5 +276,5 @@ if __name__ == "__main__":
     print("  Set port 0 to 0.0 waves...")
     dev.retardance(0, 0.0, timeout=3)
 
-    dev.close()
+    mlousb.USBDRVD_CloseDevice(devhandle)
     print("\nDone")
