@@ -62,16 +62,27 @@ def dlp_close(dev):
     return None
 
 
-def dlp_set_rgb_current(dev, r, g, b):
-    if dev is None or not DLP_AVAILABLE:
-        return
-    _dll.WriteRGBCurrent(dev, ctypes.c_uint16(r), ctypes.c_uint16(g), ctypes.c_uint16(b))
+def _scale_rgb(r, g, b):
+    """Scale 8-bit (0-255) RGB to 16-bit (0-65535) for the DLP API."""
+    return (r * 257, g * 257, b * 257)
 
 
-def dlp_set_rgb_current_max(dev, r, g, b):
+def dlp_set_rgb_current(dev, r, g, b, log=None):
     if dev is None or not DLP_AVAILABLE:
         return
-    _dll.WriteRGBCurrentMax(dev, ctypes.c_uint16(r), ctypes.c_uint16(g), ctypes.c_uint16(b))
+    r16, g16, b16 = _scale_rgb(r, g, b)
+    ret = _dll.WriteRGBCurrent(dev, ctypes.c_uint16(r16), ctypes.c_uint16(g16), ctypes.c_uint16(b16))
+    if ret != 0 and log:
+        log(f"WriteRGBCurrent returned {ret}")
+
+
+def dlp_set_rgb_current_max(dev, r, g, b, log=None):
+    if dev is None or not DLP_AVAILABLE:
+        return
+    r16, g16, b16 = _scale_rgb(r, g, b)
+    ret = _dll.WriteRGBCurrentMax(dev, ctypes.c_uint16(r16), ctypes.c_uint16(g16), ctypes.c_uint16(b16))
+    if ret != 0 and log:
+        log(f"WriteRGBCurrentMax returned {ret}")
 
 
 COLOR_MAP = {"Red": 16711680, "Green": 65280, "Blue": 255}

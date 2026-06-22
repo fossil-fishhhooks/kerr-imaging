@@ -148,8 +148,8 @@ class LightControlPanel(QGroupBox):
             return
         r, g, b = COLOR_RGB[name]
         try:
-            dlp_set_rgb_current_max(self._dlp_device, r, g, b)
-            self._log_msg(f"LED color: {name} ({r},{g},{b}) max current")
+            dlp_set_rgb_current_max(self._dlp_device, r, g, b, log=self._log_msg)
+            self._log_msg(f"LED color: {name} ({r},{g},{b}) -> full 16-bit")
         except Exception as e:
             self._log_msg(f"Set color failed: {e}")
 
