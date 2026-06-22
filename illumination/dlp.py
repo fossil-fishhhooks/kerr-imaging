@@ -28,6 +28,10 @@ try:
     _dll.Close.argtypes = [DLPDevice]
     _dll.Close.restype = ctypes.c_int
     _dll.Version.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+    _dll.WriteRGBCurrent.argtypes = [DLPDevice, ctypes.c_uint16, ctypes.c_uint16, ctypes.c_uint16]
+    _dll.WriteRGBCurrent.restype = ctypes.c_int
+    _dll.WriteRGBCurrentMax.argtypes = [DLPDevice, ctypes.c_uint16, ctypes.c_uint16, ctypes.c_uint16]
+    _dll.WriteRGBCurrentMax.restype = ctypes.c_int
     DLP_AVAILABLE = True
 except Exception:
     pass
@@ -58,4 +62,17 @@ def dlp_close(dev):
     return None
 
 
+def dlp_set_rgb_current(dev, r, g, b):
+    if dev is None or not DLP_AVAILABLE:
+        return
+    _dll.WriteRGBCurrent(dev, ctypes.c_uint16(r), ctypes.c_uint16(g), ctypes.c_uint16(b))
+
+
+def dlp_set_rgb_current_max(dev, r, g, b):
+    if dev is None or not DLP_AVAILABLE:
+        return
+    _dll.WriteRGBCurrentMax(dev, ctypes.c_uint16(r), ctypes.c_uint16(g), ctypes.c_uint16(b))
+
+
 COLOR_MAP = {"Red": 16711680, "Green": 65280, "Blue": 255}
+COLOR_RGB = {"Red": (255, 0, 0), "Green": (0, 255, 0), "Blue": (0, 0, 255)}

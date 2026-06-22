@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 from illumination import IPG
-from illumination.dlp import DLP_AVAILABLE, dlp_open, dlp_close, COLOR_MAP
+from illumination.dlp import DLP_AVAILABLE, dlp_open, dlp_close, dlp_set_rgb_current_max, COLOR_MAP, COLOR_RGB
 
 
 class LightControlPanel(QGroupBox):
@@ -51,6 +51,7 @@ class LightControlPanel(QGroupBox):
         arc_row1.addWidget(QLabel("Color:"))
         self._color = QComboBox()
         self._color.addItems(["Red", "Green", "Blue"])
+        self._color.currentTextChanged.connect(self._apply_color)
         arc_row1.addWidget(self._color)
         layout.addLayout(arc_row1)
 
@@ -98,6 +99,7 @@ class LightControlPanel(QGroupBox):
             if DLP_AVAILABLE:
                 self._dlp_device = dlp_open()
                 self._log_msg("DLP initialized")
+                self._apply_color()
             else:
                 self._log_msg("DLP not available (Linux or missing DLL)")
 
@@ -133,12 +135,23 @@ class LightControlPanel(QGroupBox):
             outr = self._outradius.value()
             sa = self._startang.value()
             ea = self._endang.value()
-            color = COLOR_MAP[self._color.currentText()]
-            cmd = f"arc {inr} {outr} {sa} {ea} {color}\r"
+            # always white — color is set directly on LEDs via WriteRGBCurrentMax
+            cmd = f"arc {inr} {outr} {sa} {ea} 16777215\r"
             IPG.send_message(self._ipg_port, cmd)
             self._log_msg(f"Sent: {cmd.strip()}")
         except Exception as e:
             self._log_msg(f"Send arc failed: {e}")
+
+    def _apply_color(self):
+        name = self._color.currentText()
+        if not name or not self._dlp_device:
+            return
+        r, g, b = COLOR_RGB[name]
+        try:
+            dlp_set_rgb_current_max(self._dlp_device, r, g, b)
+            self._log_msg(f"LED color: {name} ({r},{g},{b}) max current")
+        except Exception as e:
+            self._log_msg(f"Set color failed: {e}")
 
     def _sleep(self):
         try:
