@@ -147,6 +147,18 @@ def dlp_read_reg(dev, reg, log=print):
     return dlp_write_read_command(dev, bytes([reg]), 1, log=log)
 
 
+def dlp_write_input_image_size(dev, width, height, log=print):
+    """Write Input Image Size (2Eh) — tell DLPC3479 incoming frame dimensions.
+
+    Bytes 1-2: pixels per line (LSB, MSB), Bytes 3-4: lines per frame (LSB, MSB).
+    """
+    if dev is None or not DLP_AVAILABLE:
+        return -1
+    data = bytes([0x2E, width & 0xFF, (width >> 8) & 0xFF,
+                  height & 0xFF, (height >> 8) & 0xFF])
+    return dlp_write_command(dev, data, log=log)
+
+
 def dlp_write_pattern_config(dev, seq_type=0x03, num_patterns=1,
                               illum_sel=0x07, log=print):
     """Write Pattern Configuration (96h).
@@ -159,6 +171,14 @@ def dlp_write_pattern_config(dev, seq_type=0x03, num_patterns=1,
         return -1
     data = bytes([0x96, seq_type, num_patterns, illum_sel])
     return dlp_write_command(dev, data, log=log)
+
+
+def dlp_read_pattern_config(dev, log=print):
+    """Read Pattern Configuration (97h) — returns the current pattern config bytes."""
+    if dev is None or not DLP_AVAILABLE:
+        return -1, b''
+    ret, data = dlp_write_read_command(dev, bytes([0x97]), 9, log=log)
+    return ret, data
 
 
 def dlp_write_trigger_out_config(dev, select=0, enable=True, polarity=False,
@@ -199,18 +219,20 @@ def dlp_set_operate_mode(dev, mode, log=print):
 def dlp_enable_external_pattern_streaming(dev, log=print):
     """Switch to External Pattern Streaming mode (0x04).
 
-    Prerequisites (done at dlp_open):
-      - External source configured and locked (HDMI via RPi)
-      - WriteExternalVideoSourceFormat + WriteDisplaySize already set
+    The DLPC3479 captures each incoming HDMI frame as a pattern, bypassing
+    the DMD's sequential R→G→B color subframe processing. LED illumination
+    is set to white (all LEDs) — color is controlled via WriteRGBCurrentMax.
 
-    This function:
-      1. Writes Pattern Configuration (8-bit RGB, 1 pattern, all LEDs)
-      2. Configures Trigger Out 1 for camera sync
-      3. Switches operating mode to 0x04
+    Command sequence:
+      1. Write Input Image Size (2Eh) — tell controller the frame dimensions
+      2. Write Pattern Configuration (96h) — 8-bit RGB, 1 pat, all LEDs
+      3. Configure Trigger Out 1 for camera sync
+      4. Switches operating mode to 0x04
     """
     if dev is None or not DLP_AVAILABLE:
         return -1
     log("--- Enabling External Pattern Streaming mode ---")
+    dlp_write_input_image_size(dev, 1920, 1080, log=log)
     dlp_write_pattern_config(dev, seq_type=0x03, num_patterns=1,
                               illum_sel=0x07, log=log)
     dlp_write_trigger_out_config(dev, select=0, enable=True,

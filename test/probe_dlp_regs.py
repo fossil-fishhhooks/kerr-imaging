@@ -16,6 +16,7 @@ from illumination.dlp import (
     dlp_write_command, dlp_read_reg, dlp_write_reg,
     dlp_set_rgb_current_max, dlp_set_rgb_current,
     dlp_write_pattern_config, dlp_write_trigger_out_config,
+    dlp_write_input_image_size, dlp_read_pattern_config,
     dlp_enable_external_pattern_streaming,
     dlp_disable_external_pattern_streaming,
     DLP_MODE_EXTERNAL_PATTERN_STREAMING,
@@ -55,6 +56,8 @@ def probe(dev):
     print("  stream_off      - revert to External Video (mode 0x00)")
     print("  patconfig       - write Pattern Config (96h): 8-bit RGB, 1 pat, all LEDs")
     print("  patconfig <st> <n> <i> - custom: seq_type, num_pat, illum_sel")
+    print("  patread         - read back Pattern Config (97h)")
+    print("  imgsize [w h]  - write/read Input Image Size (2Eh). default 1920x1080")
     print()
     print("Illumination select byte: b0=R, b1=G, b2=B")
     print("  0x01 = red only, 0x02 = green only, 0x04 = blue only")
@@ -140,6 +143,27 @@ def probe(dev):
 
             elif cmd == 'stream_off':
                 dlp_disable_external_pattern_streaming(dev)
+
+            elif cmd == 'patread':
+                ret, data = dlp_read_pattern_config(dev)
+                if ret == 0 and data:
+                    print(f"  Pattern Config: {data.hex()} ({len(data)} bytes)")
+                else:
+                    print(f"  read failed ({ret})")
+
+            elif cmd == 'imgsize':
+                if len(parts) >= 3:
+                    w = int(parts[1])
+                    h = int(parts[2])
+                else:
+                    w, h = 1920, 1080
+                dlp_write_input_image_size(dev, w, h)
+                # Read back by trying to read opcode 0x2F (Read Input Image Size)
+                ret, data = dlp_read_reg(dev, 0x2F)
+                if ret != 0:
+                    print("  (no readback available)")
+                elif data:
+                    print(f"  ReadInputImageSize = {data.hex()}")
 
             else:
                 print("  unknown command")
