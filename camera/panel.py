@@ -278,7 +278,7 @@ class CameraPanel(QGroupBox):
         if self._cam is None or not self._capturing:
             return
         try:
-            frame = self._cam.read_newest_image()
+            frame = self._cam.grab(timeout=0)
             if frame is not None:
                 self._framebuffer = frame.copy()
                 self._display_frame(self._framebuffer, self._live_label)
@@ -314,8 +314,7 @@ class CameraPanel(QGroupBox):
             self._cam.set_roi(x, x + w, y, y + h, hbin=2, vbin=2)
             self._cam.setup_acquisition(mode="sequence")
             self._cam.start_acquisition()
-            self._cam.wait_for_frame()
-            f = self._cam.read_newest_image()
+            f = self._cam.grab(timeout=5)
             if f is not None:
                 self._framebuffer = f.copy()
             self._roi_info.setText(f"ROI: ({x},{y}) {w}×{h}  bin 2×2")
