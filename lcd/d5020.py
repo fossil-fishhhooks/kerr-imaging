@@ -1,11 +1,5 @@
 #Meadowlark Optics D5020 Python Wrapper
-#************************************************************************
-#
-#                               Kerr Imaging
-#
-# Wraps usbdrvd.dll to control a Meadowlark Optics D5020 Liquid Crystal
-# Variable Retarder.  Based on the official D5020Example.py.
-#
+
 #************************************************************************
 
 import os
