@@ -32,6 +32,8 @@ try:
     _dll.WriteRGBCurrent.restype = ctypes.c_int
     _dll.WriteRGBCurrentMax.argtypes = [DLPDevice, ctypes.c_uint16, ctypes.c_uint16, ctypes.c_uint16]
     _dll.WriteRGBCurrentMax.restype = ctypes.c_int
+    _dll.SetI2CBusAccess.argtypes = [DLPDevice, ctypes.c_bool]
+    _dll.SetI2CBusAccess.restype = ctypes.c_int
     DLP_AVAILABLE = True
 except Exception:
     pass
@@ -67,22 +69,26 @@ def _scale_rgb(r, g, b):
     return (r * 257, g * 257, b * 257)
 
 
-def dlp_set_rgb_current(dev, r, g, b, log=None):
+def dlp_set_rgb_current(dev, r, g, b, log=print):
     if dev is None or not DLP_AVAILABLE:
-        return
+        return -1
     r16, g16, b16 = _scale_rgb(r, g, b)
     ret = _dll.WriteRGBCurrent(dev, ctypes.c_uint16(r16), ctypes.c_uint16(g16), ctypes.c_uint16(b16))
-    if ret != 0 and log:
-        log(f"WriteRGBCurrent returned {ret}")
+    log(f"WriteRGBCurrent({r16},{g16},{b16}) = {ret}")
+    return ret
 
 
-def dlp_set_rgb_current_max(dev, r, g, b, log=None):
+def dlp_set_rgb_current_max(dev, r, g, b, log=print):
     if dev is None or not DLP_AVAILABLE:
-        return
+        return -1
+    _dll.SetI2CBusAccess(dev, True)
     r16, g16, b16 = _scale_rgb(r, g, b)
     ret = _dll.WriteRGBCurrentMax(dev, ctypes.c_uint16(r16), ctypes.c_uint16(g16), ctypes.c_uint16(b16))
-    if ret != 0 and log:
-        log(f"WriteRGBCurrentMax returned {ret}")
+    ret2 = _dll.WriteRGBCurrent(dev, ctypes.c_uint16(r16), ctypes.c_uint16(g16), ctypes.c_uint16(b16))
+    _dll.SetI2CBusAccess(dev, False)
+    log(f"WriteRGBCurrentMax({r16},{g16},{b16}) = {ret}")
+    log(f"WriteRGBCurrent({r16},{g16},{b16})   = {ret2}")
+    return ret
 
 
 COLOR_MAP = {"Red": 16711680, "Green": 65280, "Blue": 255}

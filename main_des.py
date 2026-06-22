@@ -311,14 +311,18 @@ class FramebufferWindow(QMainWindow):
             self.logtext += f"\n[ERROR] Send arc failed: {e}"
         self.log.setText(self.logtext)
 
+    def _log_dlp(self, msg):
+        self.logtext += f"\n[DLP] {msg}"
+        self.log.setText(self.logtext)
+
     def _apply_dlp_color(self):
         name = self.color_combo.currentText()
         if not name or not self.dlp_device:
             return
         r, g, b = COLOR_RGB[name]
         try:
-            dlp_set_rgb_current_max(self.dlp_device, r, g, b)
-            self.logtext += f"\n[DLP] LED color: {name} ({r},{g},{b}) -> 16-bit"
+            dlp_set_rgb_current_max(self.dlp_device, r, g, b, log=self._log_dlp)
+            self.logtext += f"\n[DLP] LED color: {name} ({r},{g},{b})"
         except Exception as e:
             self.logtext += f"\n[ERROR] Set DLP color failed: {e}"
         self.log.setText(self.logtext)
