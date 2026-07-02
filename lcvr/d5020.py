@@ -6,6 +6,8 @@ import threading
 from ctypes import *
 from ctypes.wintypes import *
 
+from .i_suck_at_math import calculate_correct_delta2
+
 def makecmd (cmdstr):
 #This function converts a command string to a byte array and adds the carriage return character to the end.
     cmdlen = len(cmdstr) + 1 #set up length
@@ -32,58 +34,7 @@ class D5020Error(Exception):
     pass
 
 
-DEFAULT_CALIBRATION = [
-    # (voltage_mV, retardance_waves) from Meadowlark LCVR datasheet (extracted)
-    (0,     0.636),
-    (967,   0.628),
-    (1074,  0.616),
-    (1128,  0.601),
-    (1182,  0.587),
-    (1235,  0.569),
-    (1289,  0.555),
-    (1343,  0.531),
-    (1396,  0.514),
-    (1450,  0.490),
-    (1504,  0.479),
-    (1558,  0.449),
-    (1611,  0.423),
-    (1665,  0.409),
-    (1719,  0.391),
-    (1772,  0.371),
-    (1826,  0.347),
-    (1880,  0.333),
-    (1934,  0.321),
-    (1987,  0.306),
-    (2041,  0.292),
-    (2095,  0.283),
-    (2148,  0.271),
-    (2202,  0.260),
-    (2256,  0.248),
-    (2363,  0.233),
-    (2417,  0.225),
-    (2524,  0.210),
-    (2632,  0.198),
-    (2685,  0.190),
-    (2793,  0.181),
-    (2900,  0.169),
-    (3008,  0.160),
-    (3115,  0.152),
-    (3222,  0.143),
-    (3384,  0.134),
-    (3545,  0.125),
-    (3921,  0.114),
-    (4189,  0.105),
-    (4511,  0.096),
-    (4887,  0.087),
-    (5424,  0.076),
-    (6015,  0.067),
-    (7197,  0.058),
-    (8271,  0.049),
-    (9613,  0.041),
-    (12836, 0.032),
-    (17669, 0.023),
-    (20000, 0.000),
-]
+_NATIVE_WAVELENGTH = 633.0
 
 
 class D5020:
@@ -98,7 +49,9 @@ class D5020:
         self.usb_pid = c_uint(5020)
         self.flagsandattrs = c_uint(1073741824)
         self.devhandle = None
-        self._cal = {}
+        self._cal_raw = {}       # port -> [(mV, nm_at_633), ...]  (never changes)
+        self._cal = {}           # port -> [(mV, nm_at_curr_wl), ...]  (rebuilt by set_wavelength)
+        self._wavelength = None  # current wavelength in nm
         if model is not None:
             self.load_calibration(port if port is not None else 0, model, wavelength)
 
@@ -106,15 +59,13 @@ class D5020:
         """Load calibration from file in lcvr/calib/<model>.
 
         File format: tab-separated columns (mV, nm, waves).
-        Uses the waves column (column 3) for retardance lookup.
-        Raises ValueError if wavelength is not 633 nm.
+        Stores raw (mV, nm_at_633) pairs and builds the active calibration
+        for the requested wavelength (defaults to the calibration's native 633 nm).
         """
-        if wavelength is not None and wavelength != 633:
-            raise ValueError(f"Only wavelength 633 nm supported, got {wavelength}")
         path = os.path.join(os.path.dirname(__file__), "calib", str(model))
         if not os.path.exists(path):
             raise FileNotFoundError(f"Calibration file not found: {path}")
-        table = []
+        raw = []
         with open(path) as f:
             for line in f:
                 line = line.strip()
@@ -123,19 +74,25 @@ class D5020:
                 parts = line.split()
                 if len(parts) >= 3:
                     mv = float(parts[0])
-                    waves = float(parts[2])
-                    table.append((mv, waves))
-        if not table:
+                    nm = float(parts[1])
+                    raw.append((mv, nm))
+        if not raw:
             raise ValueError(f"No calibration data parsed from {path}")
-        self._cal[port] = sorted(table, key=lambda p: p[0])
+        self._cal_raw[port] = sorted(raw, key=lambda p: p[0])
+        wl = wavelength if wavelength is not None else _NATIVE_WAVELENGTH
+        self._set_port_wavelength(port, wl)
 
     def set_calibration(self, port, table):
-        """Set voltage(mV)->retardance(waves) calibration lookup table for a port.
+        """Set voltage(mV)->retardance(nm) calibration lookup table for a port.
 
-        *table* is a list of (voltage_mV, retardance_waves) pairs sorted by voltage.
-        Retardance at 0V must be the maximum; voltage must be strictly increasing.
+        *table* is a list of (voltage_mV, retardance_nm) pairs sorted by voltage.
+        This stores both the raw (assumed at 633 nm) and active calibration.
         """
-        self._cal[port] = sorted(table, key=lambda p: p[0])
+        t = sorted(table, key=lambda p: p[0])
+        self._cal_raw[port] = list(t)
+        self._cal[port] = list(t)
+        if self._wavelength is None:
+            self._wavelength = _NATIVE_WAVELENGTH
 
     @staticmethod
     def _interp(table, x):
@@ -162,17 +119,43 @@ class D5020:
                 return int(round(x0 + (x1 - x0) * t))
         return int(round(table[-1][0]))
 
-    def _get_cal(self, port):
+    def set_wavelength(self, new_wavelength):
+        """Recompute internal calibration for every port to *new_wavelength* nm.
+
+        Uses shift_wavelength() from i_suck_at_math on each raw (mV, nm_at_633) point.
+        """
+        for port in list(self._cal_raw):
+            self._set_port_wavelength(port, new_wavelength)
+        self._wavelength = new_wavelength
+
+    def _set_port_wavelength(self, port, wl):
+        raw = self._cal_raw.get(port)
+        if raw is None:
+            raise D5020Error(f"No raw calibration for port {port}")
+        if wl == _NATIVE_WAVELENGTH:
+            self._cal[port] = list(raw)
+        else:
+            shifted = []
+            for mv, nm_633 in raw:
+                nm_new = calculate_correct_delta2(_NATIVE_WAVELENGTH, nm_633, wl)
+                shifted.append((mv, nm_new))
+            self._cal[port] = sorted(shifted, key=lambda p: p[0])
+        self._wavelength = wl
+
+    def _get_cal_nm(self, port):
         cal = self._cal.get(port)
         if cal is None:
             raise D5020Error(f"No calibration loaded for port {port}")
         return cal
 
-    def _voltage_to_retardance(self, port, mv):
-        return self._interp(self._get_cal(port), mv)
+    def _voltage_to_retardance_nm(self, port, mv):
+        return self._interp(self._get_cal_nm(port), mv)
 
-    def _retardance_to_voltage(self, port, waves):
-        return self._rinterp(self._get_cal(port), max(0.0, waves))
+    def _retardance_nm_to_voltage(self, port, nm):
+        return self._rinterp(self._get_cal_nm(port), max(0.0, nm))
+
+    def _curr_wavelength(self):
+        return self._wavelength if self._wavelength is not None else _NATIVE_WAVELENGTH
 
     def device_count(self):
         return self.mlousb.USBDRVD_GetDevCount(self.usb_pid)
@@ -226,15 +209,29 @@ class D5020:
         """Get/set retardance in waves on a channel.
 
         Port 0 -> channel 1, Port 1 -> channel 2.
-        Uses per-port calibration to convert between waves and millivolts.
+        Uses per-port calibration at the currently-set wavelength.
         """
-        channel = port + 1
         if value is None:
-            raw = self._cmd(f"ld:{channel},?", timeout=timeout)
-            mv = self._parse_float(raw)
-            return self._voltage_to_retardance(port, mv)
-        mv = self._retardance_to_voltage(port, value)
+            nm = self._get_retardance_nm(port, timeout)
+            return nm / self._curr_wavelength()
+        self.set_retardance_waves(port, value, timeout)
+
+    def _get_retardance_nm(self, port, timeout=2):
+        channel = port + 1
+        raw = self._cmd(f"ld:{channel},?", timeout=timeout)
+        mv = self._parse_float(raw)
+        return self._voltage_to_retardance_nm(port, mv)
+
+    def set_retardance_nm(self, port, value, timeout=2):
+        """Set retardance in nanometres on a channel."""
+        channel = port + 1
+        mv = self._retardance_nm_to_voltage(port, max(0.0, value))
         self._cmd(f"ld:{channel},{mv}", timeout=timeout)
+
+    def set_retardance_waves(self, port, value, timeout=2):
+        """Set retardance in waves on a channel."""
+        nm = max(0.0, value) * self._curr_wavelength()
+        self.set_retardance_nm(port, nm, timeout)
 
     def temperature(self, channel=1, timeout=None):
         raw = self._cmd(f"tmp:{channel},?", timeout=timeout)
@@ -283,32 +280,39 @@ if __name__ == "__main__":
     dev.devhandle = devhandle
     dev.usb_pid = usb_pid
     dev.flagsandattrs = flagsandattrs
+    dev._cal_raw = {}
     dev._cal = {}
-    dev.set_calibration(0, DEFAULT_CALIBRATION)
+    dev._wavelength = None
+    dev.load_calibration(0, "H15230", wavelength=633)
 
     # test version
     print(f"  Version: {dev.version(timeout=5)}")
     print(f"  Serial: {dev.serial_number(timeout=5)}")
 
-    print("\n  Calibration table (port 0):")
+    print(f"\n  Calibration table (port 0, {dev._wavelength:.0f} nm):")
     for mv, r in dev._cal[0]:
-        print(f"    {mv:5d} mV  ->  {r:.3f} waves")
+        print(f"    {mv:8.4f} mV  ->  {r:.4f} nm  ({r/dev._wavelength:.4f} waves)")
 
-    print("\n  Retardance query:")
+    print("\n  Retardance query (waves):")
     for port in (0, 1):
         try:
             r = dev.retardance(port, timeout=3)
-            print(f"    Port {port}: {r:.3f} waves")
+            print(f"    Port {port}: {r:.4f} waves")
         except D5020Error as e:
             print(f"    Port {port}: ERROR - {e}")
 
     print("\n  Set port 0 to 0.5 waves...")
-    dev.retardance(0, 0.5, timeout=3)
+    dev.set_retardance_waves(0, 0.5, timeout=3)
     r = dev.retardance(0, timeout=3)
-    print(f"    Read back: {r:.3f} waves")
+    print(f"    Read back: {r:.4f} waves")
 
-    print("  Set port 0 to 0.0 waves...")
-    dev.retardance(0, 0.0, timeout=3)
+    print("\n  Set port 0 to 300 nm...")
+    dev.set_retardance_nm(0, 300, timeout=3)
+    r = dev.retardance(0, timeout=3)
+    print(f"    Read back: {r:.4f} waves  ({r * dev._wavelength:.1f} nm)")
+
+    print("\n  Set port 0 to 0.0 waves...")
+    dev.set_retardance_waves(0, 0.0, timeout=3)
 
     mlousb.USBDRVD_CloseDevice(devhandle)
     print("\nDone")
