@@ -6,12 +6,14 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap
 
+from .iris15 import Iris15
+
 
 class CameraPanel(QGroupBox):
     def __init__(self, cam=None, log_callback=None, parent=None):
         super().__init__("Camera", parent)
         self._log = log_callback or (lambda msg: None)
-        self._cam = cam
+        self._cam = cam  # Iris15 instance or None
         self._capturing = False
         self._frame_count = 0
         self._framebuffer = None
@@ -211,16 +213,10 @@ class CameraPanel(QGroupBox):
 
     def _connect(self):
         try:
-            from pylablib.devices import Photometrics
             self._log_msg("Connecting to camera...")
-            cam = Photometrics.PvcamCamera()
+            cam = Iris15()
             cam.open()
-            w, h = cam.get_detector_size()
-            cam.set_roi(0, w, 0, h, hbin=2, vbin=2)
-            try:
-                cam.set_trigger_mode(mode="timed", out_mode="global_shutter")
-            except Exception:
-                pass
+            cam.configure_defaults()
             self._cam = cam
             self._log_msg("Camera connected, 2×2 binning set")
             self._init_from_cam()

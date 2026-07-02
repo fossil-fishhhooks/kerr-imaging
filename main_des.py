@@ -1,5 +1,3 @@
-import pylablib as pll
-from pylablib.devices import Photometrics
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
@@ -9,6 +7,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap, QFont
 from PyQt5 import uic
+from camera.iris15 import Iris15
 from illumination import IPG
 from illumination.dlp import (
     DLP_AVAILABLE, dlp_open, dlp_close, DLPDevice, dlp_set_rgb_current_max, COLOR_RGB,
@@ -21,52 +20,25 @@ import os
 
 
 
-def setup():
-    try:
-        print(f'Cameras: {Photometrics.list_cameras()} \nConnecting to first...')
-        # Connect to the camera
-        cam = Photometrics.PvcamCamera()
-    except Exception as e:
-        print("Uh oh! Can't connect to camera. Did you turn it on? Check device manager. If there is a message, kick the empty PCIE port device, and reboot.")
-        exit(9)
-    cam.open()
-    print('Connected \nSetting up...')
-
-    # Set 2x2 hardware binning to reduce frame size 4x (faster DMA copy, less tearing risk)
-    try:
-        w, h = cam.get_detector_size()
-        cam.set_roi(0, w, 0, h, hbin=2, vbin=2)
-        print(f'Hardware binning set to 2x2')
-    except Exception as e:
-        print(f'Could not set 2x2 binning: {e}')
-
-    # Disable rolling shutter if camera supports global shutter output mode
-    try:
-        cam.set_trigger_mode(mode="timed", out_mode="global_shutter")
-        print("Global shutter mode set")
-    except Exception:
-        print("Global shutter not available, using default shutter mode")
-
-    print(f'Camera frame size: {cam.get_roi()[1]}x{cam.get_roi()[3]}')
-    print(f'Camera frame timings: {cam.get_frame_timings()}')
-
-    return cam
-
-
-
-def close(camera):
-    camera.close()
-
-
-
 NoI = 50
 
-cam = setup()
+cam = Iris15()
+try:
+    print('Connecting to camera...')
+    cam.open()
+    cam.configure_defaults()
+    print(f'Camera frame size: {cam.get_roi()[1]}x{cam.get_roi()[3]}')
+    print(f'Camera frame timings: {cam.get_frame_timings()}')
+except Exception as e:
+    print("Uh oh! Can't connect to camera. Did you turn it on? Check device manager. If there is a message, kick the empty PCIE port device, and reboot.")
+    print(e)
+    exit(9)
+
 roi = cam.get_roi()
 frame_w = (roi[1] - roi[0]) // roi[4]
 frame_h = (roi[3] - roi[2]) // roi[5]
 framebuffer = np.zeros((frame_h, frame_w), dtype=np.uint16)
-framebuffer = cam.grab()[0]
+framebuffer = cam.grab(timeout=5)[0]
 
 
 class FramebufferWindow(QMainWindow):
@@ -95,8 +67,8 @@ class FramebufferWindow(QMainWindow):
 
         self.logtext = ""  # Initialize logtext
 
-        cam.setup_acquisition(mode="sequence")
-        cam.start_acquisition()
+        self.cam.setup_acquisition(mode="sequence")
+        self.cam.start_acquisition()
 
         # Self-arming single-shot timer (never blocks the UI)
         self.timer = QTimer(self)
@@ -185,7 +157,7 @@ class FramebufferWindow(QMainWindow):
 
         # Camera settings
         try:
-            roi = cam.get_roi()
+            roi = self.cam.get_roi()
             self.roi_x_spin.setValue(roi[0])
             self.roi_y_spin.setValue(roi[2])
             w = roi[1] - roi[0]
@@ -203,7 +175,7 @@ class FramebufferWindow(QMainWindow):
             self.log.setText(self.logtext)
 
         try:
-            self.exposure_spin.setValue(cam.get_exposure() * 1000)
+            self.exposure_spin.setValue(self.cam.get_exposure() * 1000)
         except Exception:
             pass
 
@@ -215,7 +187,7 @@ class FramebufferWindow(QMainWindow):
         if self.capturing:
             self.timer.stop()
             try:
-                cam.stop_acquisition()
+                self.cam.stop_acquisition()
             except Exception as e:
                 self.logtext += f"\n[WARN] Stop acquisition: {e}"
             self.capture_button.setText("Start Capture")
@@ -223,8 +195,8 @@ class FramebufferWindow(QMainWindow):
             self.logtext += "\n[INFO] Capture stopped"
         else:
             try:
-                cam.setup_acquisition(mode="sequence")
-                cam.start_acquisition()
+                self.cam.setup_acquisition(mode="sequence")
+                self.cam.start_acquisition()
             except Exception as e:
                 self.logtext += f"\n[ERROR] Failed to start capture: {e}"
                 self.log.setText(self.logtext)
@@ -239,7 +211,7 @@ class FramebufferWindow(QMainWindow):
     def set_exposure(self):
         try:
             val_ms = self.exposure_spin.value()
-            cam.set_exposure(val_ms / 1000)
+            self.cam.set_exposure(val_ms / 1000)
             self.logtext += f"\n[INFO] Camera exposure set to {val_ms} ms"
             val_us = int(val_ms * 1000)
             if self._pattern_streaming_active and self.dlp_device is not None:
@@ -257,13 +229,13 @@ class FramebufferWindow(QMainWindow):
             w = self.roi_w_spin.value()
             h = self.roi_h_spin.value()
 
-            cam.stop_acquisition()
-            cam.set_roi(x, x + w, y, y + h, hbin=2, vbin=2)
-            cam.setup_acquisition(mode="sequence")
-            cam.start_acquisition()
+            self.cam.stop_acquisition()
+            self.cam.set_roi(x, x + w, y, y + h, hbin=2, vbin=2)
+            self.cam.setup_acquisition(mode="sequence")
+            self.cam.start_acquisition()
 
-            cam.wait_for_frame()
-            self.framebuffer = cam.read_newest_image().copy()
+            self.cam.wait_for_frame()
+            self.framebuffer = self.cam.read_newest_image().copy()
 
             self.current_roi_label.setText(
                 f"Current ROI: ({x}, {y}) → ({x+w}, {y+h})  [{w}×{h}]"
@@ -389,7 +361,7 @@ class FramebufferWindow(QMainWindow):
 
     def update_frame(self):
         try:
-            frame = cam.read_newest_image()
+            frame = self.cam.read_newest_image()
             if frame is not None:
                 self.framebuffer = frame.copy()
                 self.display_frame(self.framebuffer, self.live_label)
