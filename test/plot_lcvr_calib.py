@@ -68,32 +68,30 @@ out1 = os.path.join(os.path.dirname(__file__), f"{MODEL}_wavelength_shift.png")
 fig1.savefig(out1, dpi=150)
 print(f"Saved: {out1}")
 
-# ── Figures 2 & 3: RGB LED bands, one per LCVR ──────────────────────────
+# ── Figures 2 & 3: RGB LED bands (stock EVM optical engine), one per LCVR
 
 LEDS = [
-    ("R", 625, "#e00000"),
-    ("G", 525, "#00c000"),
-    ("B", 455, "#0040ff"),
+    ("Red",   617, 609, 624, "#e00000"),
+    ("Green", 570, 565, 575, "#00c000"),
+    ("Blue",  459, 450, 480, "#0040ff"),
 ]
-BAND_HALF = 10
 
 for model in ("H15230", "H15231"):
     raw = load_raw_mv_nm(model)
     fig, ax = plt.subplots(figsize=(10, 6))
-    fig.suptitle(f"{model} — LED wavelengths ±{BAND_HALF} nm")
+    fig.suptitle(f"{model} — DLP EVM LED wavelengths")
 
-    for name, center, base_color in LEDS:
-        for offset, ls, alpha in [
-            (-BAND_HALF, "--", 0.4),
-            (0,          "-",  1.0),
-            (BAND_HALF,  "--", 0.4),
-        ]:
-            wl = center + offset
-            mv, nm, waves = shift_calibration(raw, wl)
-            lbl = f"{name} {wl} nm" if offset != 0 else f"{name} {wl} nm"
-            ax.plot(mv, waves, color=base_color, linestyle=ls,
-                    linewidth=1.5 if offset == 0 else 1.0, alpha=alpha,
-                    label=lbl if offset == 0 else None)
+    for name, center, lo, hi, base_color in LEDS:
+        mv_c, nm_c, waves_c = shift_calibration(raw, center)
+        mv_l, nm_l, waves_l = shift_calibration(raw, lo)
+        mv_h, nm_h, waves_h = shift_calibration(raw, hi)
+
+        ax.plot(mv_c, waves_c, color=base_color, linewidth=2,
+                label=f"{name} {center} nm ({lo}–{hi})")
+        ax.plot(mv_l, waves_l, color=base_color, linestyle="--",
+                linewidth=1, alpha=0.5)
+        ax.plot(mv_h, waves_h, color=base_color, linestyle="--",
+                linewidth=1, alpha=0.5)
 
     ax.set_xlabel("Voltage (mV)")
     ax.set_ylabel("Retardance (waves)")
