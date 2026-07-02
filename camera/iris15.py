@@ -1,7 +1,5 @@
 """Driver for Photometrics Iris 15 camera via pylablib."""
 
-from pylablib.devices import Photometrics
-
 
 class Iris15:
     """Wraps pylablib's PvcamCamera for the Photometrics Iris 15."""
@@ -10,6 +8,7 @@ class Iris15:
         self._cam = None
 
     def open(self):
+        from pylablib.devices import Photometrics
         self._cam = Photometrics.PvcamCamera()
         self._cam.open()
         return self

@@ -22,30 +22,38 @@ import os
 
 NoI = 50
 
-cam = Iris15()
-try:
-    print('Connecting to camera...')
-    cam.open()
-    cam.configure_defaults()
-    print(f'Camera frame size: {cam.get_roi()[1]}x{cam.get_roi()[3]}')
-    print(f'Camera frame timings: {cam.get_frame_timings()}')
-except Exception as e:
-    print("Uh oh! Can't connect to camera. Did you turn it on? Check device manager. If there is a message, kick the empty PCIE port device, and reboot.")
-    print(e)
-    exit(9)
+cam = None
+roi = None
+frame_w = 0
+frame_h = 0
+framebuffer = np.zeros((1, 1), dtype=np.uint16)
 
-roi = cam.get_roi()
-frame_w = (roi[1] - roi[0]) // roi[4]
-frame_h = (roi[3] - roi[2]) // roi[5]
-framebuffer = np.zeros((frame_h, frame_w), dtype=np.uint16)
-framebuffer = cam.grab(timeout=5)[0]
+try:
+    c = Iris15()
+    print('Connecting to camera...')
+    c.open()
+    c.configure_defaults()
+    print(f'Camera frame size: {c.get_roi()[1]}x{c.get_roi()[3]}')
+    print(f'Camera frame timings: {c.get_frame_timings()}')
+    roi = c.get_roi()
+    frame_w = (roi[1] - roi[0]) // roi[4]
+    frame_h = (roi[3] - roi[2]) // roi[5]
+    framebuffer = np.zeros((frame_h, frame_w), dtype=np.uint16)
+    framebuffer = c.grab(timeout=5)[0]
+    cam = c
+except Exception as e:
+    print("Camera not available. Starting without camera.")
+    print(e)
 
 
 class FramebufferWindow(QMainWindow):
     def __init__(self, cam):
         super().__init__()
-        self.cam = cam  # Camera object
-        self.framebuffer = self.cam.grab()[0]  # Initial frame
+        self.cam = cam  # Camera object or None
+        if self.cam is not None:
+            self.framebuffer = self.cam.grab()[0]  # Initial frame
+        else:
+            self.framebuffer = framebuffer.copy()
         self.snapshot = None  # Stores the snapshot image
 
         # Load the UI
@@ -67,14 +75,18 @@ class FramebufferWindow(QMainWindow):
 
         self.logtext = ""  # Initialize logtext
 
-        self.cam.setup_acquisition(mode="sequence")
-        self.cam.start_acquisition()
-
         # Self-arming single-shot timer (never blocks the UI)
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.update_frame)
-        self.timer.start(0)  # Kick off first frame immediately
+
+        if self.cam is not None:
+            self.cam.setup_acquisition(mode="sequence")
+            self.cam.start_acquisition()
+            self.capturing = True
+            self.timer.start(0)  # Kick off first frame immediately
+        else:
+            self.capturing = False
 
         self.snapshot = np.zeros(self.framebuffer.shape, dtype=np.uint8)
         height, width = self.snapshot.shape
@@ -83,7 +95,6 @@ class FramebufferWindow(QMainWindow):
         self.snap_label.setPixmap(pixmap)
 
         # Capture toggle
-        self.capturing = True
         self.capture_button.clicked.connect(self.toggle_capture)
 
         # IPG / light control setup
@@ -175,15 +186,18 @@ class FramebufferWindow(QMainWindow):
             self.log.setText(self.logtext)
 
         try:
-            self.exposure_spin.setValue(self.cam.get_exposure() * 1000)
-        except Exception:
-            pass
+            if self.cam is not None:
+                self.exposure_spin.setValue(self.cam.get_exposure() * 1000)
+        except Exception as e:
+            self.logtext += f"\n[WARN] Could not read exposure: {e}"
 
         self.exposure_spin.editingFinished.connect(self.set_exposure)
         self.apply_roi_button.clicked.connect(self.apply_roi)
 
 
     def toggle_capture(self):
+        if self.cam is None:
+            return
         if self.capturing:
             self.timer.stop()
             try:
@@ -209,6 +223,8 @@ class FramebufferWindow(QMainWindow):
 
 
     def set_exposure(self):
+        if self.cam is None:
+            return
         try:
             val_ms = self.exposure_spin.value()
             self.cam.set_exposure(val_ms / 1000)
@@ -223,6 +239,8 @@ class FramebufferWindow(QMainWindow):
 
 
     def apply_roi(self):
+        if self.cam is None:
+            return
         try:
             x = self.roi_x_spin.value()
             y = self.roi_y_spin.value()
@@ -360,6 +378,8 @@ class FramebufferWindow(QMainWindow):
 
 
     def update_frame(self):
+        if self.cam is None:
+            return
         try:
             frame = self.cam.read_newest_image()
             if frame is not None:
