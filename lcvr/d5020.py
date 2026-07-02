@@ -132,12 +132,13 @@ class D5020:
         raw = self._cal_raw.get(port)
         if raw is None:
             raise D5020Error(f"No raw calibration for port {port}")
+        deltac = abs(raw[-1][1])  # absolute nm retardance at highest voltage (~20 V)
         if wl == _NATIVE_WAVELENGTH:
             self._cal[port] = list(raw)
         else:
             shifted = []
             for mv, nm_633 in raw:
-                nm_new = calculate_correct_delta2(_NATIVE_WAVELENGTH, nm_633, wl)
+                nm_new = calculate_correct_delta2(_NATIVE_WAVELENGTH, nm_633, wl, deltac)
                 shifted.append((mv, nm_new))
             self._cal[port] = sorted(shifted, key=lambda p: p[0])
         self._wavelength = wl

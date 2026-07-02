@@ -10,10 +10,9 @@ voltage V1 - > retardance D2 = (D1 + Dcomp) * (W1/W2) * RLC - Dcomp * (W1/W2) * 
 """
 ## TODO: ^^^^^ check it plz ~Arin
 
-DELTAC = 21313131.313133 ### <---- change this
 
 
-def calculate_correct_delta2(lambda1, delta1_plus_deltac, lambda2): # notice delta1_plus_deltac because this is the dataset vlaue. units: nm, not waves!
+def calculate_correct_delta2(lambda1, delta1_plus_deltac, lambda2, DELTAC): # notice delta1_plus_deltac because this is the dataset vlaue. units: nm, not waves!
     RLC = (0.13 + 7000.0/(lambda2*lambda2))/(0.13 + 7000.0/(lambda1*lambda1)) # constants in nm not micrometers
     RC = (0.008 + 100.0/(lambda2*lambda2))/(0.008 + 100.0/(lambda1*lambda1))
     delta2 = delta1_plus_deltac * (lambda1/lambda2) * RLC - DELTAC * (lambda1/lambda2) * RC
