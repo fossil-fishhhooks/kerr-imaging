@@ -112,10 +112,14 @@ class LCDPanel(QGroupBox):
         else:
             self._connect()
 
+    _CAL_MODELS = {0: "H15230", 1: "H15231"}
+
     def _connect(self):
         try:
             dev = D5020()
             dev.open()
+            for port, model in self._CAL_MODELS.items():
+                dev.load_calibration(port, model, wavelength=633)
             self._device = dev
             self._connected = True
             self._connect_btn.setText("Disconnect")
@@ -137,7 +141,7 @@ class LCDPanel(QGroupBox):
                 self._status_label.setText("LCVR: Connected")
             self._connected_changed.emit(True)
             self._log_msg("LCVR connected")
-        except D5020Error as e:
+        except (D5020Error, FileNotFoundError, ValueError) as e:
             self._log_msg(f"LCVR connection failed: {e}")
             self._status.setText("Failed")
             self._status.setStyleSheet("color: red")

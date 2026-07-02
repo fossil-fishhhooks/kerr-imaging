@@ -1,6 +1,4 @@
-#Meadowlark Optics D5020 Python Wrapper
-
-#************************************************************************
+# Meadowlark Optics D5020 Python Wrapper
 
 import os
 import sys
@@ -89,7 +87,7 @@ DEFAULT_CALIBRATION = [
 
 
 class D5020:
-    def __init__(self, dll_path=None, calibration=None):
+    def __init__(self, dll_path=None, port=None, model=None, wavelength=None):
         if dll_path is None:
             dll_path = r"C:\Users\Arin\PycharmProjects\cameratest\usbdrvd"
         self.mlousb = WinDLL(dll_path)
@@ -100,15 +98,44 @@ class D5020:
         self.usb_pid = c_uint(5020)
         self.flagsandattrs = c_uint(1073741824)
         self.devhandle = None
-        self.set_calibration(calibration or DEFAULT_CALIBRATION)
+        self._cal = {}
+        if model is not None:
+            self.load_calibration(port if port is not None else 0, model, wavelength)
 
-    def set_calibration(self, table):
-        """Set voltage(mV)->retardance(waves) calibration lookup table.
+    def load_calibration(self, port, model, wavelength=None):
+        """Load calibration from file in lcvr/calib/<model>.
+
+        File format: tab-separated columns (mV, nm, waves).
+        Uses the waves column (column 3) for retardance lookup.
+        Raises ValueError if wavelength is not 633 nm.
+        """
+        if wavelength is not None and wavelength != 633:
+            raise ValueError(f"Only wavelength 633 nm supported, got {wavelength}")
+        path = os.path.join(os.path.dirname(__file__), "calib", str(model))
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Calibration file not found: {path}")
+        table = []
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split()
+                if len(parts) >= 3:
+                    mv = float(parts[0])
+                    waves = float(parts[2])
+                    table.append((mv, waves))
+        if not table:
+            raise ValueError(f"No calibration data parsed from {path}")
+        self._cal[port] = sorted(table, key=lambda p: p[0])
+
+    def set_calibration(self, port, table):
+        """Set voltage(mV)->retardance(waves) calibration lookup table for a port.
 
         *table* is a list of (voltage_mV, retardance_waves) pairs sorted by voltage.
         Retardance at 0V must be the maximum; voltage must be strictly increasing.
         """
-        self._cal = sorted(table, key=lambda p: p[0])
+        self._cal[port] = sorted(table, key=lambda p: p[0])
 
     @staticmethod
     def _interp(table, x):
@@ -135,11 +162,17 @@ class D5020:
                 return int(round(x0 + (x1 - x0) * t))
         return int(round(table[-1][0]))
 
-    def _voltage_to_retardance(self, mv):
-        return self._interp(self._cal, mv)
+    def _get_cal(self, port):
+        cal = self._cal.get(port)
+        if cal is None:
+            raise D5020Error(f"No calibration loaded for port {port}")
+        return cal
 
-    def _retardance_to_voltage(self, waves):
-        return self._rinterp(self._cal, max(0.0, waves))
+    def _voltage_to_retardance(self, port, mv):
+        return self._interp(self._get_cal(port), mv)
+
+    def _retardance_to_voltage(self, port, waves):
+        return self._rinterp(self._get_cal(port), max(0.0, waves))
 
     def device_count(self):
         return self.mlousb.USBDRVD_GetDevCount(self.usb_pid)
@@ -193,14 +226,14 @@ class D5020:
         """Get/set retardance in waves on a channel.
 
         Port 0 -> channel 1, Port 1 -> channel 2.
-        Uses the internal calibration table to convert between waves and millivolts.
+        Uses per-port calibration to convert between waves and millivolts.
         """
         channel = port + 1
         if value is None:
             raw = self._cmd(f"ld:{channel},?", timeout=timeout)
             mv = self._parse_float(raw)
-            return self._voltage_to_retardance(mv)
-        mv = self._retardance_to_voltage(value)
+            return self._voltage_to_retardance(port, mv)
+        mv = self._retardance_to_voltage(port, value)
         self._cmd(f"ld:{channel},{mv}", timeout=timeout)
 
     def temperature(self, channel=1, timeout=None):
@@ -250,14 +283,15 @@ if __name__ == "__main__":
     dev.devhandle = devhandle
     dev.usb_pid = usb_pid
     dev.flagsandattrs = flagsandattrs
-    dev.set_calibration(DEFAULT_CALIBRATION)
+    dev._cal = {}
+    dev.set_calibration(0, DEFAULT_CALIBRATION)
 
     # test version
     print(f"  Version: {dev.version(timeout=5)}")
     print(f"  Serial: {dev.serial_number(timeout=5)}")
 
-    print("\n  Calibration table:")
-    for mv, r in dev._cal:
+    print("\n  Calibration table (port 0):")
+    for mv, r in dev._cal[0]:
         print(f"    {mv:5d} mV  ->  {r:.3f} waves")
 
     print("\n  Retardance query:")
