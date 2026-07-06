@@ -322,7 +322,7 @@ def dlp_enable_external_pattern_streaming(dev, vsync=False, log=print):
                                   delay=trig1_delay, log=log)
     dlp_write_trigger_out_config(dev, select=1, enable=True,
                                   polarity=False, invert=False,
-                                  delay=trig1_delay, log=log)
+                                  delay=0, log=log)
     ret = dlp_set_operate_mode(dev, DLP_MODE_EXTERNAL_PATTERN_STREAMING, log=log)
     log(f"External Pattern Streaming enabled (ret={ret}, vsync={vsync})")
     return ret
