@@ -68,7 +68,7 @@ class Iris15:
         return self._cam.read_newest_image()
 
     def grab(self, timeout=5):
-        return self._cam.grab(timeout=timeout)
+        return self._cam.grab()
 
     def __enter__(self):
         return self

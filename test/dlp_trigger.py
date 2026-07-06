@@ -35,7 +35,7 @@ def main():
     print(f"Configuring TRIG_OUT_2 with delay={delay} µs ...")
     ret = dlp_write_trigger_out_config(
         dev, select=1, enable=True,
-        polarity=False, invert=False, delay=delay,
+        polarity=False, invert=True, delay=delay,
     )
     if ret == 0:
         print("TRIG_OUT_2 configured successfully (ret=0)")
