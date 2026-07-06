@@ -324,6 +324,7 @@ class FramebufferWindow(QMainWindow):
             if DLP_AVAILABLE:
                 self.dlp_device = dlp_open()
                 self.logtext += "\n[DLP] DLP initialized"
+                print(f"[DLP DEBUG] dlp_open returned device: {self.dlp_device is not None}", flush=True)
                 self.stream_btn.setEnabled(True)
             else:
                 self.logtext += "\n[DLP] DLP not available (Linux or missing DLL)"
@@ -359,6 +360,8 @@ class FramebufferWindow(QMainWindow):
         name = self.color_combo.currentText()
         if not name or not self.dlp_device:
             return
+        if not self._pattern_streaming_active:
+            return
         r, g, b = COLOR_RGB[name]
         try:
             dlp_set_rgb_current_max(self.dlp_device, r, g, b, log=self._log_dlp)
@@ -370,21 +373,24 @@ class FramebufferWindow(QMainWindow):
 
     def _toggle_pattern_streaming(self):
         if not self.dlp_device:
+            print("[DLP DEBUG] No dlp_device!", flush=True)
             return
         if not self._pattern_streaming_active:
-            # Exact same calls as test/dlp_trigger.py (no log= — uses print, like test)
+            print("[DLP DEBUG] Pattern ON: starting exact sequence...", flush=True)
             dlp_write_input_image_size(self.dlp_device, 1920, 1080)
+            print("[DLP DEBUG]  1/5 WriteInputImageSize done", flush=True)
             dlp_write_pattern_config(self.dlp_device,
                 seq_type=0x00, num_patterns=1, illum_sel=0x07,
                 exp_time_us=3000, pre_dark_us=500, post_dark_us=100)
-            trig1_delay = 0 if self.vsync_check.isChecked() else 500
+            print("[DLP DEBUG]  2/5 WritePatternConfig done", flush=True)
             dlp_write_trigger_out_config(self.dlp_device, select=0, enable=True,
-                                          polarity=False, invert=False,
-                                          delay=trig1_delay)
+                                          polarity=False, invert=False, delay=500)
+            print("[DLP DEBUG]  3/5 WriteTriggerOut(TRIG1,delay=500) done", flush=True)
             dlp_write_trigger_out_config(self.dlp_device, select=1, enable=True,
-                                          polarity=False, invert=False,
-                                          delay=0)
+                                          polarity=False, invert=False, delay=0)
+            print("[DLP DEBUG]  4/5 WriteTriggerOut(TRIG2,delay=0) done", flush=True)
             dlp_set_operate_mode(self.dlp_device, DLP_MODE_EXTERNAL_PATTERN_STREAMING)
+            print("[DLP DEBUG]  5/5 WriteOperateMode(0x03) done", flush=True)
             self._pattern_streaming_active = True
             self.stream_btn.setText("Pattern: ON")
             self.stream_btn.setStyleSheet("background-color: #2a6; color: #fff;")
@@ -395,6 +401,10 @@ class FramebufferWindow(QMainWindow):
             dlp_write_trigger_out_config(self.dlp_device, select=1, enable=False,
                                           polarity=False, invert=False, delay=0)
             dlp_set_operate_mode(self.dlp_device, 0x00)
+            self._pattern_streaming_active = False
+            self.stream_btn.setText("Pattern: OFF")
+            self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
+            self.logtext += "\n[DLP] Back to External Video mode"
             self._pattern_streaming_active = False
             self.stream_btn.setText("Pattern: OFF")
             self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
