@@ -265,7 +265,29 @@ def dlp_set_operate_mode(dev, mode, log=print):
     return ret
 
 
-def dlp_enable_external_pattern_streaming(dev, log=print):
+def dlp_set_trig_out1_delay(dev, delay_us, log=print):
+    """Reconfigure TRIG_OUT_1 delay while pattern streaming is active."""
+    if dev is None or not DLP_AVAILABLE:
+        return -1
+    ret = dlp_write_trigger_out_config(dev, select=0, enable=True,
+                                        polarity=False, invert=False,
+                                        delay=delay_us, log=log)
+    log(f"TRIG_OUT_1 delay set to {delay_us} us (ret={ret})")
+    return ret
+
+
+def dlp_set_trig_out2_config(dev, enable=True, delay=0, log=print):
+    """Reconfigure TRIG_OUT_2 while pattern streaming is active."""
+    if dev is None or not DLP_AVAILABLE:
+        return -1
+    ret = dlp_write_trigger_out_config(dev, select=1, enable=enable,
+                                        polarity=False, invert=False,
+                                        delay=delay, log=log)
+    log(f"TRIG_OUT_2 reconfigured (en={enable}, delay={delay} us, ret={ret})")
+    return ret
+
+
+def dlp_enable_external_pattern_streaming(dev, vsync=False, log=print):
     """Switch to External Pattern Streaming mode (0x03).
 
     The DLPC3479 captures each incoming HDMI frame as a pattern, bypassing
@@ -294,11 +316,15 @@ def dlp_enable_external_pattern_streaming(dev, log=print):
         seq_type=0x00, num_patterns=1, illum_sel=0x07,
         exp_time_us=3000, pre_dark_us=500, post_dark_us=100,
         log=log)
+    trig1_delay = 0 if vsync else 500
     dlp_write_trigger_out_config(dev, select=0, enable=True,
                                   polarity=False, invert=False,
-                                  delay=500, log=log)
+                                  delay=trig1_delay, log=log)
+    dlp_write_trigger_out_config(dev, select=1, enable=True,
+                                  polarity=False, invert=False,
+                                  delay=trig1_delay, log=log)
     ret = dlp_set_operate_mode(dev, DLP_MODE_EXTERNAL_PATTERN_STREAMING, log=log)
-    log(f"External Pattern Streaming enabled (ret={ret})")
+    log(f"External Pattern Streaming enabled (ret={ret}, vsync={vsync})")
     return ret
 
 
@@ -327,9 +353,12 @@ def dlp_disable_external_pattern_streaming(dev, log=print):
     if dev is None or not DLP_AVAILABLE:
         return -1
     log("--- Disabling External Pattern Streaming ---")
-    _dll.WriteTriggerOut(dev, ctypes.c_bool(0), ctypes.c_bool(False),
-                          ctypes.c_bool(False), ctypes.c_bool(False),
-                          ctypes.c_uint32(0))
+    dlp_write_trigger_out_config(dev, select=0, enable=False,
+                                  polarity=False, invert=False,
+                                  delay=0, log=log)
+    dlp_write_trigger_out_config(dev, select=1, enable=False,
+                                  polarity=False, invert=False,
+                                  delay=0, log=log)
     ret = dlp_set_operate_mode(dev, DLP_MODE_EXTERNAL_VIDEO, log=log)
     log(f"Back to External Video mode (ret={ret})")
     return ret

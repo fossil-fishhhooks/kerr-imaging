@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 from PyQt5.QtWidgets import (
-    QApplication, QLabel, QMainWindow, QToolBar, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit
+    QApplication, QCheckBox, QLabel, QMainWindow, QToolBar, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit
 )
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap, QFont
@@ -13,6 +13,7 @@ from illumination.dlp import (
     DLP_AVAILABLE, dlp_open, dlp_close, DLPDevice, dlp_set_rgb_current_max, COLOR_RGB,
     dlp_enable_external_pattern_streaming, dlp_disable_external_pattern_streaming,
     dlp_update_exposure_time,
+    dlp_write_trigger_out_config, dlp_set_trig_out1_delay,
 )
 from piezo.panel import PiezoPanel
 from lcvr.panel import LCDPanel
@@ -192,6 +193,14 @@ class FramebufferWindow(QMainWindow):
             self.logtext += f"\n[WARN] Could not read exposure: {e}"
 
         self.exposure_spin.editingFinished.connect(self.set_exposure)
+
+        # VSYNC trigger checkbox — like Auto-Normalize, in Camera Settings
+        self.vsync_check = QCheckBox("VSYNC trigger", self.cam_settings_group)
+        self.vsync_check.setGeometry(10, 262, 236, 20)
+        self.vsync_check.setChecked(False)
+        self.cam_settings_group.setFixedHeight(285)
+        self.vsync_check.stateChanged.connect(self._update_vsync_mode)
+
         self.apply_roi_button.clicked.connect(self.apply_roi)
 
 
@@ -339,19 +348,40 @@ class FramebufferWindow(QMainWindow):
         if not self.dlp_device:
             return
         if not self._pattern_streaming_active:
-            dlp_enable_external_pattern_streaming(self.dlp_device, log=self._log_dlp)
+            vsync = self.vsync_check.isChecked()
+            dlp_enable_external_pattern_streaming(self.dlp_device, vsync=vsync, log=self._log_dlp)
             self._pattern_streaming_active = True
             self.stream_btn.setText("Pattern: ON")
             self.stream_btn.setStyleSheet("background-color: #2a6; color: #fff;")
             self.logtext += "\n[DLP] External Pattern Streaming ACTIVE"
+            if self.cam is not None:
+                try:
+                    self.cam.set_external_trigger()
+                    self.logtext += "\n[Camera] External trigger mode enabled"
+                except Exception as e:
+                    self.logtext += f"\n[WARN] Could not set external trigger: {e}"
         else:
             dlp_disable_external_pattern_streaming(self.dlp_device, log=self._log_dlp)
             self._pattern_streaming_active = False
             self.stream_btn.setText("Pattern: OFF")
             self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
             self.logtext += "\n[DLP] Back to External Video mode"
+            if self.cam is not None:
+                try:
+                    self.cam.set_internal_trigger()
+                    self.logtext += "\n[Camera] Internal trigger mode restored"
+                except Exception as e:
+                    self.logtext += f"\n[WARN] Could not set internal trigger: {e}"
         self.log.setText(self.logtext)
 
+
+    def _update_vsync_mode(self):
+        if not self.dlp_device or not self._pattern_streaming_active:
+            return
+        delay = 0 if self.vsync_check.isChecked() else 500
+        dlp_set_trig_out1_delay(self.dlp_device, delay, log=self._log_dlp)
+        self.logtext += f"\n[DLP] TRIG_OUT_1 delay set to {delay} us"
+        self.log.setText(self.logtext)
 
     def sleep_ipg(self):
         try:

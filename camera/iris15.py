@@ -32,6 +32,21 @@ class Iris15:
             pass
         return self
 
+    def set_trigger_mode(self, mode, out_mode="global_shutter"):
+        """Set camera trigger mode and output mode."""
+        self._cam.set_trigger_mode(mode=mode, out_mode=out_mode)
+
+    def set_external_trigger(self):
+        """Switch camera to external hardware trigger (rising edge)."""
+        try:
+            self._cam.set_trigger_mode(mode="external_start", out_mode="global_shutter")
+        except Exception:
+            self._cam.set_trigger_mode(mode="external", out_mode="global_shutter")
+
+    def set_internal_trigger(self):
+        """Switch camera back to free-running internal trigger."""
+        self._cam.set_trigger_mode(mode="timed", out_mode="global_shutter")
+
     # --- pass-through wrappers ---
 
     def get_detector_size(self):
