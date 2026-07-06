@@ -47,17 +47,19 @@ def main():
     print("Writing input image size 1920×1080 ...")
     dlp_write_input_image_size(dev, 1920, 1080)
 
-    # 2. Write pattern config: 1-bit mono, 1 pattern, all LEDs, ~16ms exposure
-    print("Writing pattern config (1-bit mono, 1 pat, all LEDs, 15000µs exp) ...")
+    # 2. Write pattern config: 1-bit mono, 1 pattern, all LEDs
+    #    Timing matches TI GUI settings that produce trigger outputs:
+    #    exposure=3ms, pre-dark=500µs, post-dark=100µs
+    print("Writing pattern config (1-bit mono, 1 pat, all LEDs, 3000µs exp, 500µs pre, 100µs post) ...")
     dlp_write_pattern_config(dev,
         seq_type=0x00, num_patterns=1, illum_sel=0x07,
-        exp_time_us=15000, pre_dark_us=171, post_dark_us=31,
+        exp_time_us=3000, pre_dark_us=500, post_dark_us=100,
     )
 
     # 3. TRIG_OUT_1 — camera sync at start of illumination (delay = pre-dark)
-    print("Configuring TRIG_OUT_1 (camera sync, delay=171 µs) ...")
+    print("Configuring TRIG_OUT_1 (camera sync, delay=500 µs) ...")
     dlp_write_trigger_out_config(dev, select=0, enable=True,
-                                  polarity=False, invert=False, delay=171)
+                                  polarity=False, invert=False, delay=500)
 
     # 4. TRIG_OUT_2 — oscilloscope sync at VSYNC (delay=0)
     print(f"Configuring TRIG_OUT_2 (scope sync, delay={delay} µs) ...")
@@ -70,7 +72,7 @@ def main():
 
     print()
     print("DLP is running in External Pattern Streaming mode.")
-    print("  TRIG_OUT_1 (SMA J15) — camera sync, delay=171 µs")
+    print("  TRIG_OUT_1 (SMA J15) — camera sync, delay=500 µs")
     print(f"  TRIG_OUT_2 (SMA J14) — scope sync,  delay={delay} µs")
     print()
     print("Probe both SMA connectors with the oscilloscope.")

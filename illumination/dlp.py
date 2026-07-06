@@ -9,8 +9,8 @@ _dll = None
 class DLPDevice(ctypes.Structure):
     _fields_ = [
         ("handle", ctypes.c_void_p),
-        ("id", ctypes.c_ushort),
-        ("ch", ctypes.c_ushort),
+        ("id", ctypes.c_uint8),
+        ("ch", ctypes.c_uint8),
     ]
 
 
@@ -160,8 +160,8 @@ def dlp_write_input_image_size(dev, width, height, log=print):
 
 
 def dlp_write_pattern_config(dev, seq_type=0x03, num_patterns=1,
-                              illum_sel=0x07, exp_time_us=15000,
-                              pre_dark_us=171, post_dark_us=31,
+                              illum_sel=0x07, exp_time_us=3000,
+                              pre_dark_us=500, post_dark_us=100,
                               log=print):
     """Write Pattern Configuration (96h) — full 15-byte parameter format.
 
@@ -278,10 +278,10 @@ def dlp_enable_external_pattern_streaming(dev, log=print):
       3. Configure Trigger Out 1 for camera sync
       4. Switches operating mode to 0x03
 
-    Timing values for external 1-bit mono:
-      Exposure: 15000 µs
-      Pre-dark: 171 µs
-      Post-dark: 31 µs
+    Timing values (verified working via TI GUI, 60 FPS):
+      Exposure: 3000 µs
+      Pre-dark: 500 µs
+      Post-dark: 100 µs
 
     Note: WriteInputImageSize TI doc max is 1280x800 for pattern mode,
     but EVM firmware may accept 1920x1080. Try 1920x1080 first.
@@ -292,11 +292,11 @@ def dlp_enable_external_pattern_streaming(dev, log=print):
     dlp_write_input_image_size(dev, 1920, 1080, log=log)
     dlp_write_pattern_config(dev,
         seq_type=0x00, num_patterns=1, illum_sel=0x07,
-        exp_time_us=15000, pre_dark_us=171, post_dark_us=31,
+        exp_time_us=3000, pre_dark_us=500, post_dark_us=100,
         log=log)
     dlp_write_trigger_out_config(dev, select=0, enable=True,
                                   polarity=False, invert=False,
-                                  delay=171, log=log)
+                                  delay=500, log=log)
     ret = dlp_set_operate_mode(dev, DLP_MODE_EXTERNAL_PATTERN_STREAMING, log=log)
     log(f"External Pattern Streaming enabled (ret={ret})")
     return ret
@@ -315,7 +315,7 @@ def dlp_update_exposure_time(dev, exposure_us, log=print):
     log(f"--- Updating DLP exposure to {exposure_us} µs ---")
     dlp_write_pattern_config(dev,
         seq_type=0x00, num_patterns=1, illum_sel=0x07,
-        exp_time_us=exposure_us, pre_dark_us=171, post_dark_us=31,
+        exp_time_us=exposure_us, pre_dark_us=500, post_dark_us=100,
         log=log)
     ret = dlp_set_operate_mode(dev, DLP_MODE_EXTERNAL_PATTERN_STREAMING, log=log)
     log(f"Exposure time updated (ret={ret})")
