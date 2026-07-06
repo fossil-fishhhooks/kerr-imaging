@@ -372,33 +372,29 @@ class FramebufferWindow(QMainWindow):
         if not self.dlp_device:
             return
         if not self._pattern_streaming_active:
-            # Exact sequence from test/dlp_trigger.py (known to work)
-            dlp_write_input_image_size(self.dlp_device, 1920, 1080, log=self._log_dlp)
+            # Exact same calls as test/dlp_trigger.py (no log= — uses print, like test)
+            dlp_write_input_image_size(self.dlp_device, 1920, 1080)
             dlp_write_pattern_config(self.dlp_device,
                 seq_type=0x00, num_patterns=1, illum_sel=0x07,
-                exp_time_us=3000, pre_dark_us=500, post_dark_us=100,
-                log=self._log_dlp)
+                exp_time_us=3000, pre_dark_us=500, post_dark_us=100)
             trig1_delay = 0 if self.vsync_check.isChecked() else 500
             dlp_write_trigger_out_config(self.dlp_device, select=0, enable=True,
                                           polarity=False, invert=False,
-                                          delay=trig1_delay, log=self._log_dlp)
+                                          delay=trig1_delay)
             dlp_write_trigger_out_config(self.dlp_device, select=1, enable=True,
                                           polarity=False, invert=False,
-                                          delay=0, log=self._log_dlp)
-            dlp_set_operate_mode(self.dlp_device, DLP_MODE_EXTERNAL_PATTERN_STREAMING,
-                                 log=self._log_dlp)
+                                          delay=0)
+            dlp_set_operate_mode(self.dlp_device, DLP_MODE_EXTERNAL_PATTERN_STREAMING)
             self._pattern_streaming_active = True
             self.stream_btn.setText("Pattern: ON")
             self.stream_btn.setStyleSheet("background-color: #2a6; color: #fff;")
             self.logtext += "\n[DLP] External Pattern Streaming ACTIVE"
         else:
             dlp_write_trigger_out_config(self.dlp_device, select=0, enable=False,
-                                          polarity=False, invert=False,
-                                          delay=0, log=self._log_dlp)
+                                          polarity=False, invert=False, delay=0)
             dlp_write_trigger_out_config(self.dlp_device, select=1, enable=False,
-                                          polarity=False, invert=False,
-                                          delay=0, log=self._log_dlp)
-            dlp_set_operate_mode(self.dlp_device, 0x00, log=self._log_dlp)
+                                          polarity=False, invert=False, delay=0)
+            dlp_set_operate_mode(self.dlp_device, 0x00)
             self._pattern_streaming_active = False
             self.stream_btn.setText("Pattern: OFF")
             self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
