@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import time
 import numpy as np
 import sys
 from PyQt5.QtWidgets import (
@@ -413,10 +414,11 @@ class FramebufferWindow(QMainWindow):
 
     def _update_vsync_mode(self, state):
         """Callback for when the VSYNC trigger checkbox is toggled."""
+        print("here")
         if self.cam is None:
             return
 
-        import time
+
         was_capturing = self.capturing
 
         # 1. Block the PyQt GUI timer loop completely
@@ -430,16 +432,16 @@ class FramebufferWindow(QMainWindow):
 
             # 3. Apply the validated trigger parameters directly to the idle camera
             if state == Qt.Checked:
-                self._log_line("\n[CAMERA] Adjusting to Rolling Shutter + External Rising Edge Trigger...")
-                self.cam.set_trigger_mode(mode="e_rise_edge", out_mode="rolling")
+                print("Set trigger")
+                self.cam.set_trigger_mode(mode="e_rise_edge", out_mode="rolling_shutter")
             else:
-                self._log_line("\n[CAMERA] Adjusting to Rolling Shutter + Internal Timed Trigger...")
-                self.cam.set_trigger_mode(mode="timed", out_mode="rolling")
+                print("Set trigger")
+                self.cam.set_trigger_mode(mode="timed", out_mode="rolling_shutter")
 
             time.sleep(0.1)  # Small safety delay for non-volatile register update
 
         except Exception as e:
-            self._log_line(f"\n[ERROR] Driver rejected trigger command: {e}")
+            print(f"[ERROR] Driver rejected trigger command: {e}")
             # Restore state if modification fails
             if was_capturing:
                 self.capturing = True
@@ -449,7 +451,6 @@ class FramebufferWindow(QMainWindow):
         # 4. CRITICAL STEP: Re-allocate the memory buffers to apply the mode change
         if was_capturing:
             try:
-                self._log_line("[SYSTEM] Overwriting active memory layouts for new trigger mode...")
 
                 # Re-running setup_acquisition clears out the old C-level buffer alignment
                 # and maps out fresh memory space for the new trigger settings.
@@ -460,9 +461,9 @@ class FramebufferWindow(QMainWindow):
                 self.cam.start_acquisition()
                 self.capturing = True
                 self.timer.start(0)  # Re-enable the PyQt single-shot loop
-                self._log_line("[SYSTEM] Live feed online in chosen mode.")
             except Exception as e:
-                self._log_line(f"\n[ERROR] Failed to rebuild frame stack: {e}")
+                print("[ERROR] Failed to rebuild frame stack: {e}")
+
 
     def sleep_ipg(self):
         try:
