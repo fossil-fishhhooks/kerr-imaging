@@ -411,16 +411,58 @@ class FramebufferWindow(QMainWindow):
             self.logtext += "\n[DLP] Back to External Video mode"
         self.log.setText(self.logtext)
 
-
-    def _update_vsync_mode(self):
-        if not self.dlp_device or not self._pattern_streaming_active:
+    def _update_vsync_mode(self, state):
+        """Callback for when the VSYNC trigger checkbox is toggled."""
+        if self.cam is None:
             return
-        delay = 0 if self.vsync_check.isChecked() else 500
-        dlp_write_trigger_out_config(self.dlp_device, select=0, enable=True,
-                                      polarity=False, invert=False,
-                                      delay=delay, log=self._log_dlp)
-        self.logtext += f"\n[DLP] TRIG_OUT_1 delay set to {delay} us" if delay else "\n[DLP] TRIG_OUT_1 at VSYNC"
-        self.log.setText(self.logtext)
+
+        import time
+        was_capturing = self.capturing
+
+        # 1. Block the PyQt GUI timer loop completely
+        self.timer.stop()
+        self.capturing = False
+
+        try:
+            # 2. Halt active hardware sensor pipeline execution
+            self.cam.stop_acquisition()
+            time.sleep(0.1)  # Allow remaining hardware buffers to clear
+
+            # 3. Apply the validated trigger parameters directly to the idle camera
+            if state == Qt.Checked:
+                self._log_line("\n[CAMERA] Adjusting to Rolling Shutter + External Rising Edge Trigger...")
+                self.cam.set_trigger_mode(mode="e_rise_edge", out_mode="rolling")
+            else:
+                self._log_line("\n[CAMERA] Adjusting to Rolling Shutter + Internal Timed Trigger...")
+                self.cam.set_trigger_mode(mode="timed", out_mode="rolling")
+
+            time.sleep(0.1)  # Small safety delay for non-volatile register update
+
+        except Exception as e:
+            self._log_line(f"\n[ERROR] Driver rejected trigger command: {e}")
+            # Restore state if modification fails
+            if was_capturing:
+                self.capturing = True
+                self.timer.start(0)
+            return
+
+        # 4. CRITICAL STEP: Re-allocate the memory buffers to apply the mode change
+        if was_capturing:
+            try:
+                self._log_line("[SYSTEM] Overwriting active memory layouts for new trigger mode...")
+
+                # Re-running setup_acquisition clears out the old C-level buffer alignment
+                # and maps out fresh memory space for the new trigger settings.
+                self.cam.setup_acquisition(mode="sequence")
+                time.sleep(0.05)
+
+                # Start recording frames again
+                self.cam.start_acquisition()
+                self.capturing = True
+                self.timer.start(0)  # Re-enable the PyQt single-shot loop
+                self._log_line("[SYSTEM] Live feed online in chosen mode.")
+            except Exception as e:
+                self._log_line(f"\n[ERROR] Failed to rebuild frame stack: {e}")
 
     def sleep_ipg(self):
         try:
@@ -447,7 +489,7 @@ class FramebufferWindow(QMainWindow):
 
 
     def update_frame(self):
-        if self.cam is None:
+        if not self.capturing or self.cam is None:
             return
         try:
             frame = self.cam.read_newest_image()

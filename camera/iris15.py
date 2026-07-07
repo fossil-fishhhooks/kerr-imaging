@@ -36,12 +36,18 @@ class Iris15:
         """Set camera trigger mode and output mode."""
         self._cam.set_trigger_mode(mode=mode, out_mode=out_mode)
 
-    def set_external_trigger(self):
-        """Switch camera to external hardware trigger (rising edge)."""
-        try:
-            self._cam.set_trigger_mode(mode="external_start", out_mode="global_shutter")
-        except Exception:
-            self._cam.set_trigger_mode(mode="external", out_mode="global_shutter")
+    def set_external_trigger(self, trigger_type="edge"):
+        """Switch camera to external hardware trigger.
+
+        Args:
+            trigger_type (str): 'edge' for triggering on the rising edge of the light signal,
+                                'level' for triggering for the duration the light is high.
+        """
+        mode_str = "e_rise_edge" if trigger_type == "edge" else "e_level"
+        print(f"Setting camera hardware trigger mode to: {mode_str}")
+
+        # We explicitly use the valid firmware key
+        self._cam.set_trigger_mode(mode=mode_str, out_mode="rolling")
 
     def set_internal_trigger(self):
         """Switch camera back to free-running internal trigger."""
