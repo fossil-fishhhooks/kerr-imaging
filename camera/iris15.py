@@ -38,10 +38,7 @@ class Iris15:
 
     def set_external_trigger(self):
         """Switch camera to external hardware trigger (rising edge)."""
-        try:
-            self._cam.set_trigger_mode(mode="external_start", out_mode="global_shutter")
-        except Exception:
-            self._cam.set_trigger_mode(mode="external", out_mode="global_shutter")
+        self._cam.set_trigger_mode(mode="e_rise_edge", out_mode="global_shutter")
 
     def set_internal_trigger(self):
         """Switch camera back to free-running internal trigger."""

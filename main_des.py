@@ -318,7 +318,6 @@ class FramebufferWindow(QMainWindow):
                 self.dlp_device = dlp_open()
                 self.logtext += "\n[DLP] DLP initialized"
                 self._enable_pattern_streaming()
-                self.stream_btn.setText("Pattern: OFF")
                 self.stream_btn.setEnabled(True)
             else:
                 self.logtext += "\n[DLP] DLP not available (Linux or missing DLL)"
@@ -384,7 +383,7 @@ class FramebufferWindow(QMainWindow):
         dlp_set_operate_mode(self.dlp_device, DLP_MODE_EXTERNAL_PATTERN_STREAMING)
         self._pattern_streaming_active = True
         self._apply_dlp_color()
-        self.stream_btn.setText("Pattern: OFF")
+        self.stream_btn.setText("Pattern: ON")
         self.stream_btn.setStyleSheet("background-color: #2a6; color: #fff;")
         self.logtext += "\n[DLP] External Pattern Streaming ACTIVE"
         if self.cam is not None:
@@ -406,7 +405,7 @@ class FramebufferWindow(QMainWindow):
                                       polarity=False, invert=False, delay=0)
         dlp_set_operate_mode(self.dlp_device, 0x00)
         self._pattern_streaming_active = False
-        self.stream_btn.setText("Pattern: ON")
+        self.stream_btn.setText("Pattern: OFF")
         self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
         self.logtext += "\n[DLP] Back to External Video mode"
         if self.cam is not None:
