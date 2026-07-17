@@ -11,10 +11,9 @@ from PyQt5 import uic
 from camera.iris15 import Iris15
 from illumination import IPG
 from illumination.dlp import (
-    DLP_AVAILABLE, dlp_open, dlp_close, DLPDevice, dlp_set_rgb_current_max, COLOR_RGB,
-    dlp_enable_external_pattern_streaming, dlp_disable_external_pattern_streaming,
+    DLP_AVAILABLE, dlp_open, dlp_close, dlp_set_rgb_current_max, COLOR_RGB,
     dlp_update_exposure_time,
-    dlp_write_trigger_out_config, dlp_set_trig_out1_delay,
+    dlp_write_trigger_out_config,
     dlp_write_input_image_size, dlp_write_pattern_config,
     dlp_set_operate_mode, DLP_MODE_EXTERNAL_PATTERN_STREAMING,
 )
@@ -325,7 +324,6 @@ class FramebufferWindow(QMainWindow):
             if DLP_AVAILABLE:
                 self.dlp_device = dlp_open()
                 self.logtext += "\n[DLP] DLP initialized"
-                print(f"[DLP DEBUG] dlp_open returned device: {self.dlp_device is not None}", flush=True)
                 self.stream_btn.setEnabled(True)
             else:
                 self.logtext += "\n[DLP] DLP not available (Linux or missing DLL)"
@@ -374,28 +372,31 @@ class FramebufferWindow(QMainWindow):
 
     def _toggle_pattern_streaming(self):
         if not self.dlp_device:
-            print("[DLP DEBUG] No dlp_device!", flush=True)
             return
         if not self._pattern_streaming_active:
-            print("[DLP DEBUG] Pattern ON: starting exact sequence...", flush=True)
+            trig1_delay = 0 if self.vsync_check.isChecked() else 500
             dlp_write_input_image_size(self.dlp_device, 1920, 1080)
-            print("[DLP DEBUG]  1/5 WriteInputImageSize done", flush=True)
             dlp_write_pattern_config(self.dlp_device,
                 seq_type=0x00, num_patterns=1, illum_sel=0x07,
                 exp_time_us=3000, pre_dark_us=500, post_dark_us=100)
-            print("[DLP DEBUG]  2/5 WritePatternConfig done", flush=True)
             dlp_write_trigger_out_config(self.dlp_device, select=0, enable=True,
-                                          polarity=False, invert=False, delay=500)
-            print("[DLP DEBUG]  3/5 WriteTriggerOut(TRIG1,delay=500) done", flush=True)
+                                          polarity=False, invert=False,
+                                          delay=trig1_delay)
             dlp_write_trigger_out_config(self.dlp_device, select=1, enable=True,
-                                          polarity=False, invert=False, delay=0)
-            print("[DLP DEBUG]  4/5 WriteTriggerOut(TRIG2,delay=0) done", flush=True)
+                                          polarity=False, invert=False,
+                                          delay=0)
             dlp_set_operate_mode(self.dlp_device, DLP_MODE_EXTERNAL_PATTERN_STREAMING)
-            print("[DLP DEBUG]  5/5 WriteOperateMode(0x03) done", flush=True)
             self._pattern_streaming_active = True
+            self._apply_dlp_color()
             self.stream_btn.setText("Pattern: ON")
             self.stream_btn.setStyleSheet("background-color: #2a6; color: #fff;")
             self.logtext += "\n[DLP] External Pattern Streaming ACTIVE"
+            if self.cam is not None:
+                try:
+                    self.cam.set_external_trigger()
+                    self.logtext += "\n[Camera] External trigger mode enabled"
+                except Exception as e:
+                    self.logtext += f"\n[WARN] Could not set external trigger: {e}"
         else:
             dlp_write_trigger_out_config(self.dlp_device, select=0, enable=False,
                                           polarity=False, invert=False, delay=0)
@@ -406,15 +407,23 @@ class FramebufferWindow(QMainWindow):
             self.stream_btn.setText("Pattern: OFF")
             self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
             self.logtext += "\n[DLP] Back to External Video mode"
-            self._pattern_streaming_active = False
-            self.stream_btn.setText("Pattern: OFF")
-            self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
-            self.logtext += "\n[DLP] Back to External Video mode"
+            if self.cam is not None:
+                try:
+                    self.cam.set_internal_trigger()
+                    self.logtext += "\n[Camera] Internal trigger mode restored"
+                except Exception as e:
+                    self.logtext += f"\n[WARN] Could not set internal trigger: {e}"
         self.log.setText(self.logtext)
 
-    def _update_vsync_mode(self, state):
-        """Callback for when the VSYNC trigger checkbox is toggled."""
-        print("here")
+    def _update_vsync_mode(self):
+        if not self.dlp_device or not self._pattern_streaming_active:
+            return
+        delay = 0 if self.vsync_check.isChecked() else 500
+        dlp_write_trigger_out_config(self.dlp_device, select=0, enable=True,
+                                      polarity=False, invert=False,
+                                      delay=delay)
+        self.logtext += f"\n[DLP] TRIG_OUT_1 delay = {delay} us"
+        self.log.setText(self.logtext)
         if self.cam is None:
             return
 
