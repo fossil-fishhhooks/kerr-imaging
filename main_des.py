@@ -352,14 +352,13 @@ class FramebufferWindow(QMainWindow):
         name = self.color_combo.currentText()
         if not name or not self.dlp_device:
             return
-        if not self._pattern_streaming_active:
+        if self._pattern_streaming_active:
+            self.logtext += "\n[DLP] Color change takes effect on next Pattern ON"
+            self.log.setText(self.logtext)
             return
         r, g, b = COLOR_RGB[name]
-        try:
-            dlp_set_rgb_current_max(self.dlp_device, r, g, b, log=self._log_dlp)
-            self.logtext += f"\n[DLP] LED color: {name} ({r},{g},{b})"
-        except Exception as e:
-            self.logtext += f"\n[ERROR] Set DLP color failed: {e}"
+        dlp_set_rgb_current_max(self.dlp_device, r, g, b)
+        self.logtext += f"\n[DLP] LED color: {name} ({r},{g},{b})"
         self.log.setText(self.logtext)
 
 
@@ -368,6 +367,15 @@ class FramebufferWindow(QMainWindow):
             return
         if self._pattern_streaming_active:
             return
+
+        # 1. Set LED color via I2C while still in Video mode (before trigger setup)
+        name = self.color_combo.currentText()
+        if name:
+            r, g, b = COLOR_RGB.get(name, (255, 255, 255))
+            dlp_set_rgb_current_max(self.dlp_device, r, g, b)
+            self.logtext += f"\n[DLP] LED color: {name} ({r},{g},{b})"
+
+        # 2. Pattern and trigger setup (no I2C from here)
         trig1_delay = 0 if self.vsync_check.isChecked() else 500
         dlp_write_input_image_size(self.dlp_device, 1920, 1080)
         dlp_write_pattern_config(self.dlp_device,
@@ -381,16 +389,9 @@ class FramebufferWindow(QMainWindow):
                                       delay=0)
         dlp_set_operate_mode(self.dlp_device, DLP_MODE_EXTERNAL_PATTERN_STREAMING)
         self._pattern_streaming_active = True
-        self._apply_dlp_color()
         self.stream_btn.setText("Pattern: ON")
         self.stream_btn.setStyleSheet("background-color: #2a6; color: #fff;")
         self.logtext += "\n[DLP] External Pattern Streaming ACTIVE"
-        if self.cam is not None:
-            try:
-                self.cam.set_external_trigger()
-                self.logtext += "\n[Camera] External trigger mode enabled"
-            except Exception as e:
-                self.logtext += f"\n[WARN] Could not set external trigger: {e}"
         self.log.setText(self.logtext)
 
     def _disable_pattern_streaming(self):
@@ -407,12 +408,6 @@ class FramebufferWindow(QMainWindow):
         self.stream_btn.setText("Pattern: OFF")
         self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
         self.logtext += "\n[DLP] Back to External Video mode"
-        if self.cam is not None:
-            try:
-                self.cam.set_internal_trigger()
-                self.logtext += "\n[Camera] Internal trigger mode restored"
-            except Exception as e:
-                self.logtext += f"\n[WARN] Could not set internal trigger: {e}"
         self.log.setText(self.logtext)
 
     def _toggle_pattern_streaming(self):
