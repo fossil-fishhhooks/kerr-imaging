@@ -317,7 +317,6 @@ class FramebufferWindow(QMainWindow):
             if DLP_AVAILABLE:
                 self.dlp_device = dlp_open()
                 self.logtext += "\n[DLP] DLP initialized"
-                self._enable_pattern_streaming()
                 self.stream_btn.setEnabled(True)
             else:
                 self.logtext += "\n[DLP] DLP not available (Linux or missing DLL)"
