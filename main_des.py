@@ -211,14 +211,7 @@ class FramebufferWindow(QMainWindow):
         event.accept()
 
     def _cleanup(self):
-        if self._pattern_streaming_active and self.dlp_device:
-            dlp_write_trigger_out_config(self.dlp_device, select=0, enable=False,
-                                          polarity=False, invert=False,
-                                          delay=0, log=self._log_dlp)
-            dlp_write_trigger_out_config(self.dlp_device, select=1, enable=False,
-                                          polarity=False, invert=False,
-                                          delay=0, log=self._log_dlp)
-            dlp_set_operate_mode(self.dlp_device, 0x00, log=self._log_dlp)
+        self._disable_pattern_streaming()
         if self.dlp_device:
             dlp_close(self.dlp_device)
             self.dlp_device = None
@@ -324,6 +317,8 @@ class FramebufferWindow(QMainWindow):
             if DLP_AVAILABLE:
                 self.dlp_device = dlp_open()
                 self.logtext += "\n[DLP] DLP initialized"
+                self._enable_pattern_streaming()
+                self.stream_btn.setText("Pattern: OFF")
                 self.stream_btn.setEnabled(True)
             else:
                 self.logtext += "\n[DLP] DLP not available (Linux or missing DLL)"
@@ -370,50 +365,63 @@ class FramebufferWindow(QMainWindow):
         self.log.setText(self.logtext)
 
 
-    def _toggle_pattern_streaming(self):
+    def _enable_pattern_streaming(self):
+        if not self.dlp_device:
+            return
+        if self._pattern_streaming_active:
+            return
+        trig1_delay = 0 if self.vsync_check.isChecked() else 500
+        dlp_write_input_image_size(self.dlp_device, 1920, 1080)
+        dlp_write_pattern_config(self.dlp_device,
+            seq_type=0x00, num_patterns=1, illum_sel=0x07,
+            exp_time_us=3000, pre_dark_us=500, post_dark_us=100)
+        dlp_write_trigger_out_config(self.dlp_device, select=0, enable=True,
+                                      polarity=False, invert=False,
+                                      delay=trig1_delay)
+        dlp_write_trigger_out_config(self.dlp_device, select=1, enable=True,
+                                      polarity=False, invert=False,
+                                      delay=0)
+        dlp_set_operate_mode(self.dlp_device, DLP_MODE_EXTERNAL_PATTERN_STREAMING)
+        self._pattern_streaming_active = True
+        self._apply_dlp_color()
+        self.stream_btn.setText("Pattern: OFF")
+        self.stream_btn.setStyleSheet("background-color: #2a6; color: #fff;")
+        self.logtext += "\n[DLP] External Pattern Streaming ACTIVE"
+        if self.cam is not None:
+            try:
+                self.cam.set_external_trigger()
+                self.logtext += "\n[Camera] External trigger mode enabled"
+            except Exception as e:
+                self.logtext += f"\n[WARN] Could not set external trigger: {e}"
+        self.log.setText(self.logtext)
+
+    def _disable_pattern_streaming(self):
         if not self.dlp_device:
             return
         if not self._pattern_streaming_active:
-            trig1_delay = 0 if self.vsync_check.isChecked() else 500
-            dlp_write_input_image_size(self.dlp_device, 1920, 1080)
-            dlp_write_pattern_config(self.dlp_device,
-                seq_type=0x00, num_patterns=1, illum_sel=0x07,
-                exp_time_us=3000, pre_dark_us=500, post_dark_us=100)
-            dlp_write_trigger_out_config(self.dlp_device, select=0, enable=True,
-                                          polarity=False, invert=False,
-                                          delay=trig1_delay)
-            dlp_write_trigger_out_config(self.dlp_device, select=1, enable=True,
-                                          polarity=False, invert=False,
-                                          delay=0)
-            dlp_set_operate_mode(self.dlp_device, DLP_MODE_EXTERNAL_PATTERN_STREAMING)
-            self._pattern_streaming_active = True
-            self._apply_dlp_color()
-            self.stream_btn.setText("Pattern: ON")
-            self.stream_btn.setStyleSheet("background-color: #2a6; color: #fff;")
-            self.logtext += "\n[DLP] External Pattern Streaming ACTIVE"
-            if self.cam is not None:
-                try:
-                    self.cam.set_external_trigger()
-                    self.logtext += "\n[Camera] External trigger mode enabled"
-                except Exception as e:
-                    self.logtext += f"\n[WARN] Could not set external trigger: {e}"
-        else:
-            dlp_write_trigger_out_config(self.dlp_device, select=0, enable=False,
-                                          polarity=False, invert=False, delay=0)
-            dlp_write_trigger_out_config(self.dlp_device, select=1, enable=False,
-                                          polarity=False, invert=False, delay=0)
-            dlp_set_operate_mode(self.dlp_device, 0x00)
-            self._pattern_streaming_active = False
-            self.stream_btn.setText("Pattern: OFF")
-            self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
-            self.logtext += "\n[DLP] Back to External Video mode"
-            if self.cam is not None:
-                try:
-                    self.cam.set_internal_trigger()
-                    self.logtext += "\n[Camera] Internal trigger mode restored"
-                except Exception as e:
-                    self.logtext += f"\n[WARN] Could not set internal trigger: {e}"
+            return
+        dlp_write_trigger_out_config(self.dlp_device, select=0, enable=False,
+                                      polarity=False, invert=False, delay=0)
+        dlp_write_trigger_out_config(self.dlp_device, select=1, enable=False,
+                                      polarity=False, invert=False, delay=0)
+        dlp_set_operate_mode(self.dlp_device, 0x00)
+        self._pattern_streaming_active = False
+        self.stream_btn.setText("Pattern: ON")
+        self.stream_btn.setStyleSheet("background-color: #555; color: #aaa;")
+        self.logtext += "\n[DLP] Back to External Video mode"
+        if self.cam is not None:
+            try:
+                self.cam.set_internal_trigger()
+                self.logtext += "\n[Camera] Internal trigger mode restored"
+            except Exception as e:
+                self.logtext += f"\n[WARN] Could not set internal trigger: {e}"
         self.log.setText(self.logtext)
+
+    def _toggle_pattern_streaming(self):
+        if self._pattern_streaming_active:
+            self._disable_pattern_streaming()
+        else:
+            self._enable_pattern_streaming()
 
     def _update_vsync_mode(self):
         if not self.dlp_device or not self._pattern_streaming_active:
@@ -424,55 +432,6 @@ class FramebufferWindow(QMainWindow):
                                       delay=delay)
         self.logtext += f"\n[DLP] TRIG_OUT_1 delay = {delay} us"
         self.log.setText(self.logtext)
-        if self.cam is None:
-            return
-
-
-        was_capturing = self.capturing
-
-        # 1. Block the PyQt GUI timer loop completely
-        self.timer.stop()
-        self.capturing = False
-
-        try:
-            # 2. Halt active hardware sensor pipeline execution
-            self.cam.stop_acquisition()
-            time.sleep(0.1)  # Allow remaining hardware buffers to clear
-
-            # 3. Apply the validated trigger parameters directly to the idle camera
-            if state == Qt.Checked:
-                print("Set trigger")
-                self.cam.set_trigger_mode(mode="e_rise_edge", out_mode="rolling_shutter")
-            else:
-                print("Set trigger")
-                self.cam.set_trigger_mode(mode="timed", out_mode="rolling_shutter")
-
-            time.sleep(0.1)  # Small safety delay for non-volatile register update
-
-        except Exception as e:
-            print(f"[ERROR] Driver rejected trigger command: {e}")
-            # Restore state if modification fails
-            if was_capturing:
-                self.capturing = True
-                self.timer.start(0)
-            return
-
-        # 4. CRITICAL STEP: Re-allocate the memory buffers to apply the mode change
-        if was_capturing:
-            try:
-
-                # Re-running setup_acquisition clears out the old C-level buffer alignment
-                # and maps out fresh memory space for the new trigger settings.
-                self.cam.setup_acquisition(mode="sequence")
-                time.sleep(0.05)
-
-                # Start recording frames again
-                self.cam.start_acquisition()
-                self.capturing = True
-                self.timer.start(0)  # Re-enable the PyQt single-shot loop
-            except Exception as e:
-                print("[ERROR] Failed to rebuild frame stack: {e}")
-
 
     def sleep_ipg(self):
         try:
@@ -480,7 +439,7 @@ class FramebufferWindow(QMainWindow):
                 IPG.send_message(self.ipg_port, "quit\r")
                 self.logtext += "\n[IPG] Sent quit command"
 
-            self._pattern_streaming_active = False
+            self._disable_pattern_streaming()
             dlp_close(self.dlp_device)
             self.dlp_device = None
             self.stream_btn.setEnabled(False)
